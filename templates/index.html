@@ -30,6 +30,13 @@
             overflow-y: auto;
             background-color: #f0f0f0;
         }
+        .right-sidebar {
+            width: 300px;
+            background-color: #f0f0f0;
+            padding: 20px;
+            border-left: 2px solid #737373;
+            overflow-y: auto;
+        }
         .content {
             flex: 1;
             padding: 20px;
@@ -150,26 +157,27 @@
                 <div class="mb-3">
                     <label for="model" class="form-label">Model</label>
                     <select class="form-select" id="model">
-                        <option selected value="gpt-3.5-turbo-0125">GPT-3.5</option>
-                        <option value="gpt-4o-mini">GPT-4o mini</option>
+                        <option selected value="gpt-4o-mini">GPT-4o mini</option>
+                        <option value="gpt-4o">GPT-4o</option>
                     </select>
                 </div>
             </form>
 
         </div>
+
         <div class="content">
             <div class="disclaimer">
                 <h4 class="mb-3">Disclaimer</h4>
                 <p>OpenProBono AI is designed to assist users in finding relevant information and resources related to government and laws. While we strive to provide accurate and up-to-date information, our AI is not an attorney and does not provide legal advice. Users are urged to consult with legal professionals for specific legal matters.</p>
-                <p>AI results should be verified against official sources. Additionally, AI recommendations and suggestions are based on algorithms and data analysis, and may not cover all possible scenarios or legal interpretations. Developers and operators do not assume any liability for the accuracy, completeness, or reliability of AI results. Users are responsible for independently verifying information and using their own judgment to make legal decisions.</p>
-                <p>By using OpenProBono Agents, you agree to the above and following terms:</p>
+                <p>AI results should be verified against official sources. Additionally, AI recommendations and suggestions are based on algorithms and data analysis, and may not cover all possible scenarios or legal interpretations. Developers do not assume any liability for the accuracy, completeness, or reliability of AI responses and sources. Users are responsible for independently verifying information and using their own judgment to make legal decisions.</p>
+                <p>By using OpenProBono AI, you agree to the above and following terms:</p>
                 <ul>
-                    <li>Agents are for informational and educational purposes only.</li>
-                    <li>Agents do not offer legal advice.</li>
-                    <li>Information provided to Agents will not create a client-lawyer relationship and is not confidential or privileged.</li>
-                    <li>Agents may not provide accurate or reliable information.</li>
-                    <li>You use Agents at your own risk.</li>
-                    <li>OpenProBono is not responsible for any consequences arising from the use of Agents.</li>
+                    <li>OpenProBono AI is for informational and educational purposes only.</li>
+                    <li>OpenProBono AI does not offer legal advice.</li>
+                    <li>Information provided to OpenProBono AI will not create a client-lawyer relationship and is not confidential or privileged.</li>
+                    <li>OpenProBono AI may not provide accurate or reliable information.</li>
+                    <li>You use OpenProBono AI at your own risk.</li>
+                    <li>OpenProBono is not responsible for any consequences arising from the use of its AI or its results.</li>
                 </ul>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="acceptDisclaimer()">I Agree</button>
@@ -186,6 +194,13 @@
             <div class="input-group mb-3" style="display:none;">
                 <input type="text" id="user-input" class="form-control" placeholder="Type your message...">
                 <button class="btn btn-primary col-1" type="button" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+
+        <div class="right-sidebar">
+            <h3 class="mb-4">Sources</h3>
+            <div id="source-list" class="source-list">
+                <!-- Sources will be dynamically added here -->
             </div>
         </div>
     </div>
@@ -244,10 +259,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script>
-        let disclaimerAccepted = false;
-
         function acceptDisclaimer() {
-            disclaimerAccepted = true;
             document.querySelector('.disclaimer').style.display = 'none';
             document.querySelector('.chat-container').style.display = 'block';
             document.querySelector('.file-upload').style.display = 'block';
@@ -326,7 +338,8 @@
         function sendMessage() {
             const userInput = document.getElementById('user-input');
             const chatMessages = document.getElementById('chat-messages');
-            
+            const sourceList = document.getElementById('source-list');
+
             if (userInput.value.trim() !== '' || uploadedFiles.length > 0) {
                 // Add user message
                 const userMessage = document.createElement('div');
@@ -368,6 +381,25 @@
                 uploadedFiles = [];
                 updateFileList();
                 chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // Add mock sources (replace this with actual source generation logic)
+                sourceList.innerHTML = ''; // Clear previous sources
+                const mockSources = [
+                    { title: "Wikipedia - Chatbots", url: "https://en.wikipedia.org/wiki/Chatbot", text: "Chatbots are a type of software agent that can converse, make decisions, and perform actions." },
+                    { title: "Scientific American - The ChatGPT Hype", url: "https://www.scientificamerican.com/article/the-chatgpt-hype/", text: "ChatGPT is a chatbot that uses GPT-2 to generate text." },
+                    { title: "Nature - AI chatbots in research", url: "https://www.nature.com/articles/d41586-023-00340-6", text: "AI chatbots are being used in research to help people with mental health issues." }
+                ];
+                mockSources.forEach(source => {
+                    const sourceItem = document.createElement('div');
+                    sourceItem.className = "card mb-3";
+                    sourceItem.innerHTML = `
+                        <div class="card-body">
+                            <h5 class="card-title"><a href="${source.url}" target="_blank">${source.title}</a></h5>
+                            <p class="card-text">${source.text}</p>
+                        </div>
+                    `;
+                    sourceList.appendChild(sourceItem);
+                });
             }
         }
 
@@ -391,8 +423,8 @@
             let models = document.getElementById("model");
             if (provider === "openai") {
                 models.innerHTML = `
-                    <option selected value="gpt-3.5-turbo-0125">GPT-3.5</option>
-                    <option value="gpt-4o-mini">GPT-4o mini</option>
+                    <option selected value="gpt-4o-mini">GPT-4o mini</option>
+                    <option value="gpt-4o">GPT-4o</option>
                 `;
             } else if (provider === "anthropic") {
                 models.innerHTML = `
