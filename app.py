@@ -6,7 +6,7 @@ import os
 
 app = Flask(__name__)
 
-API_URL = os.environ["OPB_API_URL"]
+API_URL = "http://0.0.0.0:8080"
 API_KEY = os.environ["OPB_TEST_API_KEY"]
 HEADERS = {"X-API-KEY": API_KEY}
 BOT_ID = "b3030cc8-2256-4924-8d85-6cf1c1d246c2"
@@ -38,24 +38,26 @@ def chat():
         files = request.files.getlist("files")
 
         # create a session
-        with api_request("initialize_session", data=REQUEST_DATA) as r:
-            try:
+        try:
+            with api_request("initialize_session", data=REQUEST_DATA) as r:
                 r.raise_for_status()
                 session_id = r.json()["session_id"]
-            except Exception as e:
-                return jsonify({"error": f"Failed to initialize session: {e}"}), 400
+        except Exception as e:
+            return jsonify({"error": f"Failed to initialize session: {e}"}), 400
 
         REQUEST_DATA["session_id"] = session_id
 
         if files:
             # Call the FastAPI file upload endpoint
-            with api_request(
-                "upload_files",
-                files={f"file_{i}": file for i, file in enumerate(files)},
-                data={"session_id":session_id},
-            ) as r:
-                if r.status_code != 200:
-                    return jsonify({"error": "Failed to upload files"}), 400
+            try:
+                with api_request(
+                    "upload_files",
+                    files={f"file_{i}": file for i, file in enumerate(files)},
+                    data={"session_id":session_id},
+                ) as r:
+                    r.raise_for_status()
+            except Exception as e:
+                return jsonify({"error": f"Failed to upload files: {e}"}), 400
 
         if message:
             REQUEST_DATA["message"] = message
@@ -64,10 +66,17 @@ def chat():
     else:
         # Call the FastAPI chat endpoint and stream the response
         def generate():
-            with api_request_stream("chat_session_stream", data=REQUEST_DATA) as r:
-                for line in r.iter_lines(decode_unicode=True):
-                    if line:
-                        data = dumps({"type":"response","message":line})
-                        yield f"data: {data}\n\n"
+            try:
+                with api_request_stream("chat_session_stream", data=REQUEST_DATA) as r:
+                    r.raise_for_status()
+                    for line in r.iter_lines(decode_unicode=True):
+                        if line:
+                            yield f"data: {line}\n\n"
+            except Exception as e:
+                e_msg = dumps({"type": "error","message":str(e)})
+                yield f"data: {e_msg}\n\n"
+            finally:
+                done = dumps({"type": "done"})
+                yield f"data: {done}\n\n"
 
         return app.response_class(generate(), mimetype="text/event-stream")

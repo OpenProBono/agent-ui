@@ -131,36 +131,50 @@ async function sendMessage() {
                 // addMessageToChat('error', 'An error occurred while streaming the response.');
             };
         } else {
-            console.log("An error occurred causing an unexpected response code.")
+            console.log("An error occurred causing an unexpected response code.");
+            chatMessages.removeChild(botMessageContainer);
+            addMessageToChat('error', "An error occurred causing an unexpected response code.");
         }
 
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error: ', error);
         addMessageToChat('error', 'An error occurred while sending the message.');
     }
 }
 
+let tempContainer = null;
+let processedElements = new Set();
 function handleStreamEvent(data, container) {
     const botMessageElement = container.querySelector('.bot-message');
 
     switch(data.type) {
         case 'tool_call':
-            content = `<p><i>Tool Call</i></p><br>
-            <p><strong>Name:</strong> ${data.name}</p><br>
+            content = `<p><i>Tool Call</i></p>
+            <p><strong>Name:</strong> ${data.name}</p>
             <p><strong>Arguments:</strong> ${data.args}</p>`;
             addMessageToChat('tool', content);
             break;
         case 'tool_result':
-            botMessageElement.innerHTML += `<p><strong>Tool Result:</strong> ${data.result}</p>`;
+            updateSources(data.sources);
             break;
         case 'response':
-            const html = marked.parse(data.message);
-            const tempContainer = document.createElement('div');
+            if (data.is_new || !tempContainer) {
+                content = '';
+                tempContainer = document.createElement('div');
+                processedElements.clear();
+            }
+            content += data.content;
+            const html = marked.parse(content);
             tempContainer.innerHTML = html;
             
             // Add fade-in class to each new element
             tempContainer.querySelectorAll('*').forEach(el => {
-                el.classList.add('bot-message-stream');
+                if (!processedElements.has(el.textContent)) {
+                    el.classList.add('bot-message-stream');
+                    processedElements.add(el.textContent);
+                } else {
+                    el.classList.remove('bot-message-stream');
+                }
             });
             
             botMessageElement.appendChild(tempContainer);
@@ -194,7 +208,11 @@ function addMessageToChat(type, content) {
         content += '</div>';
     }
     messageDiv.innerHTML = `<div class="${type}-message">${content}</div>`;
-    chatMessages.appendChild(messageDiv);
+    if (type === 'tool') {
+        chatMessages.insertBefore(messageDiv, chatMessages.lastChild);
+    } else {
+        chatMessages.appendChild(messageDiv);
+    }
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
@@ -217,8 +235,8 @@ function updateSources(sources) {
         sourceItem.className = 'card mb-3';
         sourceItem.innerHTML = `
             <div class="card-body">
-                <h5 class="card-title"><a href="${source.url}" target="_blank">${source.title}</a></h5>
-                <p class="card-text">${source.text}</p>
+                <h5 class="card-title"><a href="${source}" target="_blank">${source}</a></h5>
+                <p class="card-text">${source}</p>
             </div>
         `;
         sourceList.appendChild(sourceItem);
