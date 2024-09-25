@@ -1,0 +1,131 @@
+body, html {
+    height: 100%;
+    font-family: "DM Sans", sans-serif;
+    font-optical-sizing: auto;
+    background-image: url('../static/images/bg.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+.wrapper {
+    display: flex;
+    height: 100%;
+}
+.sidebar {
+    width: 300px;
+    padding: 20px;
+    border-right: 2px solid #737373;
+    overflow-y: auto;
+    background-color: #f0f0f0;
+}
+.right-sidebar {
+    width: 300px;
+    background-color: #f0f0f0;
+    padding: 20px;
+    border-left: 2px solid #737373;
+    overflow-y: auto;
+}
+.content {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+.chat-container {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    border: 2px solid #737373;
+    background-color: #f0f0f0;
+}
+.message {
+    margin-bottom: 15px;
+}
+.user-message {
+    background-color: #5c28df;
+    color: white;
+    border-radius: 10px 10px 0 10px;
+    padding: 10px;
+    max-width: 70%;
+    margin-left: auto;
+}
+.bot-message-container {
+    display: flex;
+    flex-direction: column;
+    max-width: 70%;
+}
+.bot-message {
+    background-color: #f8fcfd;
+    border-radius: 10px 10px 10px 0;
+    padding: 10px;
+}
+@keyframes fadeIn {
+    from {opacity: 0}
+    to {opacity: 1}
+}
+.bot-message-stream {
+    animation: fadeIn 1.5s forwards;
+}
+.error-message {
+    background-color: #ff999c;
+    border-radius: 10px 10px 10px 0;
+    padding: 10px;
+}
+.tool-message {
+    background-color: #00c9d2;
+    border-radius: 10px 10px 10px 0;
+    padding: 10px;
+}
+.message-icons {
+    display: flex;
+    gap: 10px;
+    margin-top: 5px;
+}
+.message-icon {
+    cursor: pointer;
+    color: #6c757d;
+}
+.message-icon:hover {
+    color: #0056b3;
+}
+.file-upload {
+    margin-bottom: 15px;
+}
+.file-list {
+    margin-top: 10px;
+}
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+.file-thumbnails {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+.file-thumbnail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 60px;
+}
+.file-thumbnail i {
+    font-size: 2rem;
+    margin-bottom: 5px;
+}
+.file-thumbnail span {
+    font-size: 0.8rem;
+    text-align: center;
+    word-break: break-all;
+    max-width: 100%;
+}
+.disclaimer {
+    background-color: #f0f0f0;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: justify;
+}
