@@ -155,7 +155,7 @@ function handleStreamEvent(data, container) {
             addMessageToChat('tool', content);
             break;
         case 'tool_result':
-            updateSources(data.sources);
+            updateSources(data.results);
             break;
         case 'response':
             if (data.is_new || !tempContainer) {
@@ -168,7 +168,7 @@ function handleStreamEvent(data, container) {
             tempContainer.innerHTML = html;
             
             // Add fade-in class to each new element
-            tempContainer.querySelectorAll('*').forEach(el => {
+            tempContainer.querySelectorAll('p, ul li').forEach(el => {
                 if (!processedElements.has(el.textContent)) {
                     el.classList.add('bot-message-stream');
                     processedElements.add(el.textContent);
@@ -230,15 +230,93 @@ function addMessageIcons(container) {
 function updateSources(sources) {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = ''; // Clear previous sources
-    sources.forEach(source => {
+    sources.forEach((source, i) => {
+        console.log(source.type);
         const sourceItem = document.createElement('div');
         sourceItem.className = 'card mb-3';
-        sourceItem.innerHTML = `
-            <div class="card-body">
-                <h5 class="card-title"><a href="${source}" target="_blank">${source}</a></h5>
-                <p class="card-text">${source}</p>
-            </div>
-        `;
+        let html = '';
+        switch (source.type) {
+            case 'opinion':
+                let url = `https://www.courtlistener.com/opinion/${source.entity.metadata.cluster_id}/${source.entity.metadata.slug}`;
+                let authorAndDates = 'Unknown Author';
+                if (Object.hasOwn(source.entity.metadata, 'author_name')) {
+                    author = source.entity.metadata.author_name;
+                }
+                authorAndDates += ' | ' + source.entity.metadata.date_filed;
+                if (Object.hasOwn(source.entity.metadata, 'date_blocked')) {
+                    authorAndDates += ' | Blocked ' + source.entity.metadata.date_blocked;
+                }
+                let downloadUrl = '';
+                if (Object.hasOwn(source.entity.metadata, 'download_url')) {
+                    downloadUrl = `<p class="card-text"><strong>Download Link</strong>: <a href="${source.entity.metadata.download_url}">${source.entity.metadata.download_url}</a></p>`;
+                }
+                let summary = '';
+                if (Object.hasOwn(source.entity.metadata, 'summary')) {
+                    summary = `<p class="card-text"><strong>CourtListener Summary</strong>:</p><div class="ms-2">${source.entity.metadata.summary}</div>`;
+                }
+                let aiSummary = '';
+                if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
+                    mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
+                    aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
+                }
+                let otherDates = '';
+                if (Object.hasOwn(source.entity.metadata, 'other_dates')) {
+                    otherDates = `<p class="card-text"><strong>Other dates</strong>: ${source.entity.metadata.other_dates}</p>`;
+                }
+                html = `
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h5 class="card-title">${i + 1}. ${source.entity.metadata.case_name}</h5>
+                        </div>
+                        <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
+                        <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
+                        <p class="card-text"><strong>CourtListener Link</strong>: <a href="${url}">${url}</a></p>
+                        ${downloadUrl}
+                        ${summary}
+                        ${aiSummary}
+                        ${otherDates}
+                        <div class="mt-2">
+                            <p class="card-text"><strong>Matched Excerpt</strong>:</p>
+                            <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${source.entity.text}</div>
+                        </div>
+                    </div>
+                `;
+                break;
+            case 'url':
+                html = `
+                    <div class="card-body">
+                        <h5 class="card-title">${i + 1}. <a href="${source.id}" target="_blank">${source.id}</a></h5>
+                        <p class="card-text">${source.entity.text}</p>
+                    </div>
+                `;
+                break;
+            case 'file':
+                html = `
+                    <div class="card-body">
+                        <h5 class="card-title">${i + 1}. ${source.id}</h5>
+                        <p class="card-text">${source.entity.text}</p>
+                    </div>
+                `;
+                break;
+            case 'unknown':
+                console.warn('Unknown source: ', source);
+                html = `
+                    <div class="card-body">
+                        <h5 class="card-title">${i + 1}. ${source.id}</h5>
+                        <p class="card-text">Unknown entity. Text unavailable.</p>
+                    </div>
+                `;
+                break;
+            default:
+                console.error('Unexpected source: ', source);
+                html = `
+                    <div class="card-body">
+                        <h5 class="card-title">${i + 1}. ${source}</h5>
+                        <p class="card-text">Unexpected entity. Text unavailable.</p>
+                    </div>
+                `;
+        }
+        sourceItem.innerHTML = html;
         sourceList.appendChild(sourceItem);
     });
 }

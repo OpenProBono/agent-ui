@@ -13,14 +13,14 @@ body, html {
     height: 100%;
 }
 .sidebar {
-    width: 300px;
+    width: 200px;
     padding: 20px;
     border-right: 2px solid #737373;
     overflow-y: auto;
     background-color: #f0f0f0;
 }
 .right-sidebar {
-    width: 300px;
+    width: 450px;
     background-color: #f0f0f0;
     padding: 20px;
     border-left: 2px solid #737373;
@@ -76,6 +76,7 @@ body, html {
     background-color: #00c9d2;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    max-width: 70%;
 }
 .message-icons {
     display: flex;
