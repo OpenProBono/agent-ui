@@ -131,7 +131,7 @@ async function sendMessage() {
                 // addMessageToChat('error', 'An error occurred while streaming the response.');
             };
         } else {
-            console.log("An error occurred causing an unexpected response code.");
+            console.error("An error occurred causing an unexpected response code.");
             chatMessages.removeChild(botMessageContainer);
             addMessageToChat('error', "An error occurred causing an unexpected response code.");
         }
@@ -235,9 +235,11 @@ function updateSources(sources) {
         const sourceItem = document.createElement('div');
         sourceItem.className = 'card mb-3';
         let html = '';
+        let url = '';
+        let aiSummary = '';
         switch (source.type) {
             case 'opinion':
-                let url = `https://www.courtlistener.com/opinion/${source.entity.metadata.cluster_id}/${source.entity.metadata.slug}`;
+                url = `https://www.courtlistener.com/opinion/${source.entity.metadata.cluster_id}/${source.entity.metadata.slug}`;
                 let authorAndDates = 'Unknown Author';
                 if (Object.hasOwn(source.entity.metadata, 'author_name')) {
                     author = source.entity.metadata.author_name;
@@ -254,7 +256,7 @@ function updateSources(sources) {
                 if (Object.hasOwn(source.entity.metadata, 'summary')) {
                     summary = `<p class="card-text"><strong>CourtListener Summary</strong>:</p><div class="ms-2">${source.entity.metadata.summary}</div>`;
                 }
-                let aiSummary = '';
+                aiSummary = '';
                 if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
                     mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
                     aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
@@ -283,10 +285,36 @@ function updateSources(sources) {
                 `;
                 break;
             case 'url':
+                url = source.id;
+                let urlSource = 'Unknown Source';
+                if (Object.hasOwn(source.entity.metadata, 'source')) {
+                    urlSource = source.entity.metadata.source;
+                }
+                let urlTitle = 'Unknown Title';
+                if (Object.hasOwn(source.entity.metadata, 'title')) {
+                    urlTitle = source.entity.metadata.title;
+                }
+                // let favicon = '';
+                // if (Object.hasOwn(source.entity.metadata, 'favicon')) {
+                //     favicon = `<img src="${source.entity.metadata.favicon}" alt="${source} favicon" style="width: 25px; height: 25px;">`;
+                // }
+                aiSummary = '';
+                if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
+                    mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
+                    aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
+                }
                 html = `
                     <div class="card-body">
-                        <h5 class="card-title">${i + 1}. <a href="${source.id}" target="_blank">${source.id}</a></h5>
-                        <p class="card-text">${source.entity.text}</p>
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h5 class="card-title">${i + 1}. ${urlSource}</h5>
+                        </div>
+                        <h6 class="card-subtitle mb-2">${urlTitle}</h6>
+                        <p class="card-text"><strong>Link</strong>: <a href="${url}">${url}</a></p>
+                        ${aiSummary}
+                        <div class="mt-2">
+                            <p class="card-text"><strong>Matched Excerpt</strong>:</p>
+                            <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${source.entity.text}</div>
+                        </div>
                     </div>
                 `;
                 break;
