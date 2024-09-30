@@ -108,8 +108,8 @@ async function sendMessage() {
         const formData = new FormData();
         formData.append('message', userMessage);
         if (userFiles.length > 0) {
-            userFiles.forEach((file, index) => {
-                formData.append(`file-${index}`, file);
+            userFiles.forEach((file) => {
+                formData.append(`files`, file);
             });
         }
 
@@ -158,7 +158,7 @@ function handleStreamEvent(data, container) {
             updateSources(data.results);
             break;
         case 'response':
-            if (data.is_new || !tempContainer) {
+            if (!tempContainer) {
                 content = '';
                 tempContainer = document.createElement('div');
                 processedElements.clear();

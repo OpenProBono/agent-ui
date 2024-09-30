@@ -48,12 +48,17 @@ def chat():
         REQUEST_DATA["session_id"] = session_id
 
         if files:
+            # Prepare files for upload
+            files_to_upload = [
+                ('files', (file.filename, file.stream, file.content_type))
+                for file in files
+            ]
             # Call the FastAPI file upload endpoint
             try:
                 with api_request(
                     "upload_files",
-                    files={f"file_{i}": file for i, file in enumerate(files)},
-                    data={"session_id":session_id},
+                    files=files_to_upload,
+                    params={"session_id":session_id},
                 ) as r:
                     r.raise_for_status()
             except Exception as e:
