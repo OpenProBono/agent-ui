@@ -6,7 +6,7 @@ function acceptDisclaimer() {
 }
 
 function declineDisclaimer() {
-    alert('You must accept the disclaimer to use OpenProBono Agents.');
+    alert('You must accept the disclaimer to use OpenProBono AI.');
 }
 
 let uploadedFiles = [];
@@ -97,6 +97,7 @@ async function sendMessage() {
     botMessageContainer.className = 'message bot-message-container';
     botMessageContainer.innerHTML = '<div class="bot-message"></div>';
     chatMessages.appendChild(botMessageContainer);
+    addMessageIcons(botMessageContainer);
 
     // Close any existing SSE connection
     if (eventSource) {
@@ -126,10 +127,62 @@ async function sendMessage() {
             };
             eventSource.onerror = function(error) {
                 console.error('EventSource failed:', error);
-                eventSource.close();
-                // chatMessages.removeChild(botMessageContainer);
-                // addMessageToChat('error', 'An error occurred while streaming the response.');
+                console.log('EventSource: ', eventSource);
+                if (error.target instanceof EventSource && eventSource.readyState === EventSource.CLOSED) {
+                    console.error('EventSource closed by server.');
+                } else {
+                    eventSource.close();
+                    console.log('EventSource closed by client.');
+                }
+                addMessageToChat('error', 'An error occurred while streaming the response.');
             };
+        } else {
+            addMessageToChat('error', 'An error occurred causing an unexpected response code.');
+        }
+
+    } catch (error) {
+        console.error('Error: ', error);
+        addMessageToChat('error', 'An error occurred while sending your message.');
+    }
+}
+
+async function sendMessageTest() {
+    const chatMessages = document.getElementById('chat-messages');
+    const userMessage = 'Please give me Oklahoma rules of procedure and statutes related to the Motion For Extension Of Time, omitting rules and statutes for criminal or penal procedures';
+
+    // Add user message
+    addMessageToChat('user', userMessage);
+
+    // Create bot message container
+    const botMessageContainer = document.createElement('div');
+    botMessageContainer.className = 'message bot-message-container';
+    botMessageContainer.innerHTML = '<div class="bot-message"></div>';
+    chatMessages.appendChild(botMessageContainer);
+
+    // Close any existing SSE connection
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    try {
+        // Prepare request data
+        const formData = new FormData();
+        formData.append('message', userMessage);
+        formData.append('bot_id', 'cdd88312-6803-4450-956e-88f676279220');
+
+        const response = await fetch('/test', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (response.ok) {
+            let bot_response = await response.json();
+            if (Object.hasOwn(bot_response, 'output')) {
+                let html = marked.parse(bot_response.output);
+                addMessageToChat('bot', html);
+            } else {
+                addMessageToChat('error', bot_response.message);
+            }
         } else {
             console.error("An error occurred causing an unexpected response code.");
             chatMessages.removeChild(botMessageContainer);
@@ -149,13 +202,17 @@ function handleStreamEvent(data, container) {
 
     switch(data.type) {
         case 'tool_call':
-            content = `<p><i>Tool Call</i></p>
+            content = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
-            <p><strong>Arguments:</strong> ${data.args}</p>`;
+            <p><strong>Arguments:</strong> ${data.args}</p>
+            <p><i>The tool is gathering sources<span id="${data.index}-dots" class="dots"></span></i></p>`;
             addMessageToChat('tool', content);
             break;
         case 'tool_result':
             updateSources(data.results);
+            let toolDots = document.getElementById(`${data.index}-dots`);
+            toolDots.classList.remove('dots');
+            toolDots.innerHTML = '...finished.';
             break;
         case 'response':
             if (!tempContainer) {
@@ -178,9 +235,11 @@ function handleStreamEvent(data, container) {
             });
             
             botMessageElement.appendChild(tempContainer);
-            // addMessageIcons(container);
-            // updateSources(data.sources);
-            // eventSource.close();
+            break;
+        case 'done':
+            if (eventSource) {
+                eventSource.close();
+            }
             break;
         default:
             console.warn('Unknown event type:', data.type);

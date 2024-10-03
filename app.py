@@ -30,6 +30,19 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/test", methods=["GET", "POST"])
+def test_chat():
+    message = request.form.get("message")
+    bot_id = request.form.get("bot_id")
+    # create a session
+    try:
+        data = {"bot_id": bot_id, "message": message}
+        with api_request("initialize_session_chat", data=data) as r:
+            r.raise_for_status()
+            return jsonify(r.json()), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to initialize session: {e}"}), 400
+
 @app.route("/chat", methods=["GET", "POST"])
 def chat():
     if request.method == "POST":
@@ -83,5 +96,6 @@ def chat():
             finally:
                 done = dumps({"type": "done"})
                 yield f"data: {done}\n\n"
+                return
 
         return app.response_class(generate(), mimetype="text/event-stream")
