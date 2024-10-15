@@ -74,6 +74,11 @@ function setFeedbackAction(element) {
     console.log(feedbackAction);
 }
 
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
 let eventSource;
 async function sendMessage() {
     const userInput = document.getElementById('user-input');
@@ -146,6 +151,7 @@ async function sendMessage() {
     }
 }
 
+// for synchronous API testing
 async function sendMessageTest() {
     const chatMessages = document.getElementById('chat-messages');
     const userMessage = 'Please give me Oklahoma rules of procedure and statutes related to the Motion For Extension Of Time, omitting rules and statutes for criminal or penal procedures';
@@ -286,124 +292,170 @@ function addMessageIcons(container) {
     container.appendChild(iconsDiv);
 }
 
-function updateSources(sources) {
+let sourceMap = new Map(); // To keep track of sources and their excerpts
+
+function generateSourceHTML(source, index, excerpts) {
+    let html = '';
+    let url = '';
+    let aiSummary = '';
+    let excerptsHTML = '';
+    switch (source.type) {
+        case 'opinion':
+            url = `https://www.courtlistener.com/opinion/${source.entity.metadata.cluster_id}/${source.entity.metadata.slug}`;
+            let authorAndDates = 'Unknown Author';
+            if (Object.hasOwn(source.entity.metadata, 'author_name')) {
+                author = source.entity.metadata.author_name;
+            }
+            authorAndDates += ' | ' + formatDate(source.entity.metadata.date_filed);
+            if (Object.hasOwn(source.entity.metadata, 'date_blocked')) {
+                authorAndDates += ' | Blocked ' + formatDate(source.entity.metadata.date_blocked);
+            }
+            let downloadUrl = '';
+            if (Object.hasOwn(source.entity.metadata, 'download_url')) {
+                downloadUrl = `<p class="card-text"><strong>Download Link</strong>: <a href="${source.entity.metadata.download_url}">${source.entity.metadata.download_url}</a></p>`;
+            }
+            let summary = '';
+            if (Object.hasOwn(source.entity.metadata, 'summary')) {
+                summary = `<p class="card-text"><strong>CourtListener Summary</strong>:</p><div class="ms-2">${source.entity.metadata.summary}</div>`;
+            }
+            aiSummary = '';
+            if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
+                mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
+                aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
+            }
+            let otherDates = '';
+            if (Object.hasOwn(source.entity.metadata, 'other_dates')) {
+                otherDates = `<p class="card-text"><strong>Other dates</strong>: ${source.entity.metadata.other_dates}</p>`;
+            }
+            // Modify the excerpt part to include multiple excerpts
+            excerptsHTML = `
+                <div class="mt-2">
+                    <p class="card-text"><strong>Matched Excerpts</strong>:</p>
+                    <ol class="list-group list-group-numbered">
+            `;
+            excerptsHTML += excerpts.map(excerpt => `
+                <li class="list-group-item">
+                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${excerpt}</div>
+                </li>
+            `).join('');
+            excerptsHTML += '</ol></div>';
+            html = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5 class="card-title">${index + 1}. ${source.entity.metadata.case_name}</h5>
+                    </div>
+                    <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
+                    <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
+                    <p class="card-text"><strong>CourtListener Link</strong>: <a href="${url}">${url}</a></p>
+                    ${downloadUrl}
+                    ${summary}
+                    ${aiSummary}
+                    ${otherDates}
+                    ${excerptsHTML}
+                </div>
+            `;
+            break;
+        case 'url':
+            url = source.id;
+            let urlSource = 'Unknown Source';
+            if (Object.hasOwn(source.entity.metadata, 'source')) {
+                urlSource = source.entity.metadata.source;
+            }
+            let urlTitle = 'Unknown Title';
+            if (Object.hasOwn(source.entity.metadata, 'title')) {
+                urlTitle = source.entity.metadata.title;
+            }
+            // let favicon = '';
+            // if (Object.hasOwn(source.entity.metadata, 'favicon')) {
+            //     favicon = `<img src="${source.entity.metadata.favicon}" alt="${source} favicon" style="width: 25px; height: 25px;">`;
+            // }
+            aiSummary = '';
+            if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
+                mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
+                aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
+            }
+            excerptsHTML = `
+                <div class="mt-2">
+                    <p class="card-text"><strong>Matched Excerpts</strong>:</p>
+                    <ol class="list-group list-group-numbered">
+            `;
+            excerptsHTML += excerpts.map(excerpt => `
+                <li class="list-group-item">
+                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${excerpt}</div>
+                </li>
+            `).join('');
+            excerptsHTML += '</ol></div>';
+            html = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h5 class="card-title">${index + 1}. ${urlSource}</h5>
+                    </div>
+                    <h6 class="card-subtitle mb-2">${urlTitle}</h6>
+                    <p class="card-text"><strong>Link</strong>: <a href="${url}">${url}</a></p>
+                    ${aiSummary}
+                    ${excerptsHTML}
+                </div>
+            `;
+            break;
+        case 'file':
+            // Modify the excerpt part to include multiple excerpts
+            excerptsHTML = excerpts.map(excerpt => `<p class="card-text">${excerpt}</p>`).join('');
+            html = `
+                <div class="card-body">
+                    <h5 class="card-title">${index + 1}. ${source.id}</h5>
+                    ${excerptsHTML}
+                </div>
+            `;
+            break;
+        case 'unknown':
+            console.warn('Unknown source: ', source);
+            html = `
+                <div class="card-body">
+                    <h5 class="card-title">${index + 1}. ${source.id}</h5>
+                    <p class="card-text">Unknown entity. Text unavailable.</p>
+                </div>
+            `;
+            break;
+        default:
+            console.error('Unexpected source: ', source);
+            html = `
+                <div class="card-body">
+                    <h5 class="card-title">${index + 1}. ${source}</h5>
+                    <p class="card-text">Unexpected entity. Text unavailable.</p>
+                </div>
+            `;
+    }
+    return html;
+}
+
+function updateSources(newSources) {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = ''; // Clear previous sources
-    sources.forEach((source, i) => {
-        console.log(source.type);
+    newSources.forEach((source, i) => {
+        if (sourceMap.has(source.id)) {
+            // If the source already exists, add the new excerpt
+            if (!sourceMap.get(source.id).excerpts.includes(source.entity.text)) {
+                sourceMap.get(source.id).excerpts.push(source.entity.text);
+            }
+        } else {
+            // If it's a new source, add it to the map
+            sourceMap.set(source.id, {
+                source: source,
+                excerpts: [source.entity.text],
+                originalIndex: sourceMap.size // To maintain original order
+            });
+        }
+    });
+
+    // Clear and rebuild the entire list
+    sourceList.innerHTML = '';
+    
+    // Sort the sources based on their original index
+    const sortedSources = Array.from(sourceMap.values()).sort((a, b) => a.originalIndex - b.originalIndex);
+    sortedSources.forEach((sourceData, i) => {
         const sourceItem = document.createElement('div');
         sourceItem.className = 'card mb-3';
-        let html = '';
-        let url = '';
-        let aiSummary = '';
-        switch (source.type) {
-            case 'opinion':
-                url = `https://www.courtlistener.com/opinion/${source.entity.metadata.cluster_id}/${source.entity.metadata.slug}`;
-                let authorAndDates = 'Unknown Author';
-                if (Object.hasOwn(source.entity.metadata, 'author_name')) {
-                    author = source.entity.metadata.author_name;
-                }
-                authorAndDates += ' | ' + source.entity.metadata.date_filed;
-                if (Object.hasOwn(source.entity.metadata, 'date_blocked')) {
-                    authorAndDates += ' | Blocked ' + source.entity.metadata.date_blocked;
-                }
-                let downloadUrl = '';
-                if (Object.hasOwn(source.entity.metadata, 'download_url')) {
-                    downloadUrl = `<p class="card-text"><strong>Download Link</strong>: <a href="${source.entity.metadata.download_url}">${source.entity.metadata.download_url}</a></p>`;
-                }
-                let summary = '';
-                if (Object.hasOwn(source.entity.metadata, 'summary')) {
-                    summary = `<p class="card-text"><strong>CourtListener Summary</strong>:</p><div class="ms-2">${source.entity.metadata.summary}</div>`;
-                }
-                aiSummary = '';
-                if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
-                    mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
-                    aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
-                }
-                let otherDates = '';
-                if (Object.hasOwn(source.entity.metadata, 'other_dates')) {
-                    otherDates = `<p class="card-text"><strong>Other dates</strong>: ${source.entity.metadata.other_dates}</p>`;
-                }
-                html = `
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <h5 class="card-title">${i + 1}. ${source.entity.metadata.case_name}</h5>
-                        </div>
-                        <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
-                        <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
-                        <p class="card-text"><strong>CourtListener Link</strong>: <a href="${url}">${url}</a></p>
-                        ${downloadUrl}
-                        ${summary}
-                        ${aiSummary}
-                        ${otherDates}
-                        <div class="mt-2">
-                            <p class="card-text"><strong>Matched Excerpt</strong>:</p>
-                            <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${source.entity.text}</div>
-                        </div>
-                    </div>
-                `;
-                break;
-            case 'url':
-                url = source.id;
-                let urlSource = 'Unknown Source';
-                if (Object.hasOwn(source.entity.metadata, 'source')) {
-                    urlSource = source.entity.metadata.source;
-                }
-                let urlTitle = 'Unknown Title';
-                if (Object.hasOwn(source.entity.metadata, 'title')) {
-                    urlTitle = source.entity.metadata.title;
-                }
-                // let favicon = '';
-                // if (Object.hasOwn(source.entity.metadata, 'favicon')) {
-                //     favicon = `<img src="${source.entity.metadata.favicon}" alt="${source} favicon" style="width: 25px; height: 25px;">`;
-                // }
-                aiSummary = '';
-                if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
-                    mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
-                    aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
-                }
-                html = `
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <h5 class="card-title">${i + 1}. ${urlSource}</h5>
-                        </div>
-                        <h6 class="card-subtitle mb-2">${urlTitle}</h6>
-                        <p class="card-text"><strong>Link</strong>: <a href="${url}">${url}</a></p>
-                        ${aiSummary}
-                        <div class="mt-2">
-                            <p class="card-text"><strong>Matched Excerpt</strong>:</p>
-                            <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${source.entity.text}</div>
-                        </div>
-                    </div>
-                `;
-                break;
-            case 'file':
-                html = `
-                    <div class="card-body">
-                        <h5 class="card-title">${i + 1}. ${source.id}</h5>
-                        <p class="card-text">${source.entity.text}</p>
-                    </div>
-                `;
-                break;
-            case 'unknown':
-                console.warn('Unknown source: ', source);
-                html = `
-                    <div class="card-body">
-                        <h5 class="card-title">${i + 1}. ${source.id}</h5>
-                        <p class="card-text">Unknown entity. Text unavailable.</p>
-                    </div>
-                `;
-                break;
-            default:
-                console.error('Unexpected source: ', source);
-                html = `
-                    <div class="card-body">
-                        <h5 class="card-title">${i + 1}. ${source}</h5>
-                        <p class="card-text">Unexpected entity. Text unavailable.</p>
-                    </div>
-                `;
-        }
-        sourceItem.innerHTML = html;
+        sourceItem.innerHTML = generateSourceHTML(sourceData.source, i, sourceData.excerpts);
         sourceList.appendChild(sourceItem);
     });
 }
