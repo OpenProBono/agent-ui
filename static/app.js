@@ -75,8 +75,12 @@ function setFeedbackAction(element) {
 }
 
 function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const [year, month, day] = dateString.split('-');
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
 }
 
 let eventSource;
@@ -340,14 +344,13 @@ function generateSourceHTML(source, index, excerpts) {
             `).join('');
             excerptsHTML += '</ul></div>';
             html = `
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse${index + 1}">
-                            ${index + 1}. ${source.entity.metadata.case_name}
-                        </button>
-                    </h5>
+                <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
+                    <div>
+                        <h5>${index + 1}. ${source.entity.metadata.case_name}</h5>
+                    </div>
+                    <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
                 </div>
-                <div id="collapse${index + 1}" class="collapse">
+                <div id="collapseContent${index + 1}" style="display:none;">
                     <div class="card-body">
                         <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
                         <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
