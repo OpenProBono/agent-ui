@@ -331,27 +331,33 @@ function generateSourceHTML(source, index, excerpts) {
             excerptsHTML = `
                 <div class="mt-2">
                     <p class="card-text"><strong>Matched Excerpts</strong>:</p>
-                    <ol class="list-group list-group-numbered">
+                    <ul class="list-group">
             `;
             excerptsHTML += excerpts.map(excerpt => `
                 <li class="list-group-item">
                     <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${excerpt}</div>
                 </li>
             `).join('');
-            excerptsHTML += '</ol></div>';
+            excerptsHTML += '</ul></div>';
             html = `
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <h5 class="card-title">${index + 1}. ${source.entity.metadata.case_name}</h5>
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse${index + 1}">
+                            ${index + 1}. ${source.entity.metadata.case_name}
+                        </button>
+                    </h5>
+                </div>
+                <div id="collapse${index + 1}" class="collapse">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
+                        <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
+                        <p class="card-text"><strong>CourtListener Link</strong>: <a href="${url}">${url}</a></p>
+                        ${downloadUrl}
+                        ${summary}
+                        ${aiSummary}
+                        ${otherDates}
+                        ${excerptsHTML}
                     </div>
-                    <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
-                    <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
-                    <p class="card-text"><strong>CourtListener Link</strong>: <a href="${url}">${url}</a></p>
-                    ${downloadUrl}
-                    ${summary}
-                    ${aiSummary}
-                    ${otherDates}
-                    ${excerptsHTML}
                 </div>
             `;
             break;
@@ -365,10 +371,10 @@ function generateSourceHTML(source, index, excerpts) {
             if (Object.hasOwn(source.entity.metadata, 'title')) {
                 urlTitle = source.entity.metadata.title;
             }
-            // let favicon = '';
-            // if (Object.hasOwn(source.entity.metadata, 'favicon')) {
-            //     favicon = `<img src="${source.entity.metadata.favicon}" alt="${source} favicon" style="width: 25px; height: 25px;">`;
-            // }
+            let favicon = '';
+            if (Object.hasOwn(source.entity.metadata, 'favicon')) {
+                favicon = `<img src="${source.entity.metadata.favicon}" alt="${source} favicon" style="width: 25px; height: 25px;">`;
+            }
             aiSummary = '';
             if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
                 mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
@@ -377,23 +383,28 @@ function generateSourceHTML(source, index, excerpts) {
             excerptsHTML = `
                 <div class="mt-2">
                     <p class="card-text"><strong>Matched Excerpts</strong>:</p>
-                    <ol class="list-group list-group-numbered">
+                    <ul class="list-group">
             `;
             excerptsHTML += excerpts.map(excerpt => `
                 <li class="list-group-item">
                     <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${excerpt}</div>
                 </li>
             `).join('');
-            excerptsHTML += '</ol></div>';
+            excerptsHTML += '</ul></div>';
             html = `
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <h5 class="card-title">${index + 1}. ${urlSource}</h5>
+                <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
+                    <div>
+                        <h5>${index + 1}. ${urlSource}</h5>
+                        <h6 class="card-subtitle mb-2">${urlTitle}</h6>
                     </div>
-                    <h6 class="card-subtitle mb-2">${urlTitle}</h6>
-                    <p class="card-text"><strong>Link</strong>: <a href="${url}">${url}</a></p>
-                    ${aiSummary}
-                    ${excerptsHTML}
+                    <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
+                </div>
+                <div id="collapseContent${index + 1}" style="display:none;">
+                    <div class="card-body">
+                        <p class="card-text"><strong>Link</strong>: <a href="${url}">${url}</a></p>
+                        ${aiSummary}
+                        ${excerptsHTML}
+                    </div>
                 </div>
             `;
             break;
@@ -456,6 +467,19 @@ function updateSources(newSources) {
         const sourceItem = document.createElement('div');
         sourceItem.className = 'card mb-3';
         sourceItem.innerHTML = generateSourceHTML(sourceData.source, i, sourceData.excerpts);
+        // Make source cards collapsible
+        sourceItem.querySelector('#collapseTrigger' + (i + 1)).addEventListener('click', () => {
+            const collapseIcon = sourceItem.querySelector('#collapseIcon' + (i + 1));
+            if (collapseIcon.classList.contains('bi-chevron-down')) {
+                // Collapse the content
+                collapseIcon.classList.replace('bi-chevron-down', 'bi-chevron-up');
+                sourceItem.querySelector('#collapseContent' + (i + 1)).style.display = 'none';
+            } else {
+                // Expand the content
+                collapseIcon.classList.replace('bi-chevron-up', 'bi-chevron-down');
+                sourceItem.querySelector('#collapseContent' + (i + 1)).style.display = '';
+            }
+        });
         sourceList.appendChild(sourceItem);
     });
 }
