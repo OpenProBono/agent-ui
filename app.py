@@ -1,16 +1,16 @@
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, redirect, request, render_template, Response, session, url_for
 from json import dumps
 import requests
 import os
 
 
 app = Flask(__name__)
+app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
 API_URL = "http://0.0.0.0:8080"
 API_KEY = os.environ["OPB_TEST_API_KEY"]
 HEADERS = {"X-API-KEY": API_KEY}
 BOT_ID = "b3030cc8-2256-4924-8d85-6cf1c1d246c2"
-REQUEST_DATA = {"bot_id": BOT_ID}
 
 def api_request(endpoint, method="POST", data=None, files=None, params=None):
     url = f"{API_URL}/{endpoint}"
@@ -30,19 +30,6 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/test", methods=["GET", "POST"])
-def test_chat():
-    message = request.form.get("message")
-    bot_id = request.form.get("bot_id")
-    # create a session
-    try:
-        data = {"bot_id": bot_id, "message": message}
-        with api_request("initialize_session_chat", data=data) as r:
-            r.raise_for_status()
-            return jsonify(r.json()), 200
-    except Exception as e:
-        return jsonify({"error": f"Failed to initialize session: {e}"}), 400
-
 @app.route("/chat", methods=["GET", "POST"])
 def chat():
     if request.method == "POST":
@@ -50,20 +37,21 @@ def chat():
         message = request.form.get("message")
         files = request.files.getlist("files")
 
-        # create a session
-        try:
-            with api_request("initialize_session", data=REQUEST_DATA) as r:
-                r.raise_for_status()
-                session_id = r.json()["session_id"]
-        except Exception as e:
-            return jsonify({"error": f"Failed to initialize session: {e}"}), 400
+        # If session_id is not in the session, create a new session
+        if "session_id" not in session:
+            try:
+                with api_request("initialize_session", data={"bot_id": BOT_ID}) as r:
+                    r.raise_for_status()
+                    session["session_id"] = r.json()["session_id"]
+            except Exception as e:
+                return jsonify({"error": f"Failed to initialize session: {e}"}), 400
 
-        REQUEST_DATA["session_id"] = session_id
+        session_id = session["session_id"]
 
         if files:
             # Prepare files for upload
             files_to_upload = [
-                ('files', (file.filename, file.stream, file.content_type))
+                ("files", (file.filename, file.stream, file.content_type))
                 for file in files
             ]
             # Call the FastAPI file upload endpoint
@@ -71,21 +59,27 @@ def chat():
                 with api_request(
                     "upload_files",
                     files=files_to_upload,
-                    params={"session_id":session_id},
+                    params={"session_id": session_id},
                 ) as r:
                     r.raise_for_status()
             except Exception as e:
                 return jsonify({"error": f"Failed to upload files: {e}"}), 400
 
         if message:
-            REQUEST_DATA["message"] = message
+            session["message"] = message
 
         return jsonify({"message": "Success"}), 200
     else:
-        # Call the FastAPI chat endpoint and stream the response
+        # Retrieve the stored request data from the session
+        request_data = {
+            "bot_id": BOT_ID,
+            "session_id": session.get("session_id"),
+            "message": session.get("message")
+        }
+
         def generate():
             try:
-                with api_request_stream("chat_session_stream", data=REQUEST_DATA) as r:
+                with api_request_stream("chat_session_stream", data=request_data) as r:
                     r.raise_for_status()
                     for line in r.iter_lines(decode_unicode=True):
                         if line:
@@ -98,4 +92,9 @@ def chat():
                 yield f"data: {done}\n\n"
                 return
 
-        return app.response_class(generate(), mimetype="text/event-stream")
+        return Response(generate(), mimetype="text/event-stream")
+
+@app.route("/clear_session")
+def clear_session():
+    session.clear()  # Clear all session data
+    return redirect(url_for('index'))  # Redirect to the home page

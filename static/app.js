@@ -102,11 +102,9 @@ async function sendMessage() {
     updateFileList();
 
     // Create bot message container
-    const botMessageContainer = document.createElement('div');
+    let botMessageContainer = document.createElement('div');
     botMessageContainer.className = 'message bot-message-container';
     botMessageContainer.innerHTML = '<div class="bot-message"></div>';
-    chatMessages.appendChild(botMessageContainer);
-    addMessageIcons(botMessageContainer);
 
     // Close any existing SSE connection
     if (eventSource) {
@@ -129,6 +127,7 @@ async function sendMessage() {
         });
 
         if (response.ok) {
+            chatMessages.appendChild(botMessageContainer);
             eventSource = new EventSource('/chat');
             eventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
@@ -155,56 +154,6 @@ async function sendMessage() {
     }
 }
 
-// for synchronous API testing
-async function sendMessageTest() {
-    const chatMessages = document.getElementById('chat-messages');
-    const userMessage = 'Please give me Oklahoma rules of procedure and statutes related to the Motion For Extension Of Time, omitting rules and statutes for criminal or penal procedures';
-
-    // Add user message
-    addMessageToChat('user', userMessage);
-
-    // Create bot message container
-    const botMessageContainer = document.createElement('div');
-    botMessageContainer.className = 'message bot-message-container';
-    botMessageContainer.innerHTML = '<div class="bot-message"></div>';
-    chatMessages.appendChild(botMessageContainer);
-
-    // Close any existing SSE connection
-    if (eventSource) {
-        eventSource.close();
-    }
-
-    try {
-        // Prepare request data
-        const formData = new FormData();
-        formData.append('message', userMessage);
-        formData.append('bot_id', 'cdd88312-6803-4450-956e-88f676279220');
-
-        const response = await fetch('/test', {
-            method: 'POST',
-            body: formData
-        });
-
-        if (response.ok) {
-            let bot_response = await response.json();
-            if (Object.hasOwn(bot_response, 'output')) {
-                let html = marked.parse(bot_response.output);
-                addMessageToChat('bot', html);
-            } else {
-                addMessageToChat('error', bot_response.message);
-            }
-        } else {
-            console.error("An error occurred causing an unexpected response code.");
-            chatMessages.removeChild(botMessageContainer);
-            addMessageToChat('error', "An error occurred causing an unexpected response code.");
-        }
-
-    } catch (error) {
-        console.error('Error: ', error);
-        addMessageToChat('error', 'An error occurred while sending the message.');
-    }
-}
-
 let tempContainer = null;
 let processedElements = new Set();
 function handleStreamEvent(data, container) {
@@ -215,12 +164,12 @@ function handleStreamEvent(data, container) {
             content = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
             <p><strong>Arguments:</strong> ${data.args}</p>
-            <p><i>The tool is gathering sources<span id="${data.index}-dots" class="dots"></span></i></p>`;
+            <p><i>The tool is gathering sources<span id="${data.id}-dots" class="dots"></span></i></p>`;
             addMessageToChat('tool', content);
             break;
         case 'tool_result':
             updateSources(data.results);
-            let toolDots = document.getElementById(`${data.index}-dots`);
+            let toolDots = document.getElementById(`${data.id}-dots`);
             toolDots.classList.remove('dots');
             toolDots.innerHTML = '...finished.';
             break;
@@ -245,10 +194,12 @@ function handleStreamEvent(data, container) {
             });
             
             botMessageElement.appendChild(tempContainer);
+            tempContainer = null;
             break;
         case 'done':
             if (eventSource) {
                 eventSource.close();
+                addMessageIcons(container);
             }
             break;
         default:
@@ -296,19 +247,17 @@ function addMessageIcons(container) {
     container.appendChild(iconsDiv);
 }
 
-let sourceMap = new Map(); // To keep track of sources and their excerpts
-
-function generateSourceHTML(source, index, excerpts) {
+function generateSourceHTML(source, index, entities) {
     let html = '';
     let url = '';
     let aiSummary = '';
-    let excerptsHTML = '';
+    let entitiesHTML = '';
     switch (source.type) {
         case 'opinion':
             url = `https://www.courtlistener.com/opinion/${source.entity.metadata.cluster_id}/${source.entity.metadata.slug}`;
             let authorAndDates = 'Unknown Author';
             if (Object.hasOwn(source.entity.metadata, 'author_name')) {
-                author = source.entity.metadata.author_name;
+                authorAndDates = source.entity.metadata.author_name;
             }
             authorAndDates += ' | ' + formatDate(source.entity.metadata.date_filed);
             if (Object.hasOwn(source.entity.metadata, 'date_blocked')) {
@@ -332,17 +281,17 @@ function generateSourceHTML(source, index, excerpts) {
                 otherDates = `<p class="card-text"><strong>Other dates</strong>: ${source.entity.metadata.other_dates}</p>`;
             }
             // Modify the excerpt part to include multiple excerpts
-            excerptsHTML = `
+            entitiesHTML = `
                 <div class="mt-2">
-                    <p class="card-text"><strong>Matched Excerpts</strong>:</p>
-                    <ul class="list-group">
+                    <p class="card-text"><strong>Excerpt${entities.length > 1 ? 's' : ''} (${entities.length})</strong>:</p>
+                    <ol class="list-group">
             `;
-            excerptsHTML += excerpts.map(excerpt => `
+            entitiesHTML += entities.map(entity => `
                 <li class="list-group-item">
-                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${excerpt}</div>
+                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${entity.text}</div>
                 </li>
             `).join('');
-            excerptsHTML += '</ul></div>';
+            entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
                     <div>
@@ -359,7 +308,7 @@ function generateSourceHTML(source, index, excerpts) {
                         ${summary}
                         ${aiSummary}
                         ${otherDates}
-                        ${excerptsHTML}
+                        ${entitiesHTML}
                     </div>
                 </div>
             `;
@@ -376,29 +325,32 @@ function generateSourceHTML(source, index, excerpts) {
             }
             let favicon = '';
             if (Object.hasOwn(source.entity.metadata, 'favicon')) {
-                favicon = `<img src="${source.entity.metadata.favicon}" alt="${source} favicon" style="width: 25px; height: 25px;">`;
+                favicon = `<img src="${source.entity.metadata.favicon}" alt="${urlSource} favicon" style="width: 25px; height: 25px;">`;
+            } else {
+                favicon = `<div style="width:25px; min-width: 25px;"></div>`
             }
             aiSummary = '';
             if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
                 mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
                 aiSummary = `<p class="card-text"><strong>AI Summary</strong>:</p><div class="ms-2">${mrkdwnSummary}</div>`;
             }
-            excerptsHTML = `
+            entitiesHTML = `
                 <div class="mt-2">
-                    <p class="card-text"><strong>Matched Excerpts</strong>:</p>
-                    <ul class="list-group">
+                    <p class="card-text"><strong>Excerpt${entities.length > 1 ? 's' : ''} (${entities.length})</strong>:</p>
+                    <ol class="list-group">
             `;
-            excerptsHTML += excerpts.map(excerpt => `
+            entitiesHTML += entities.map(entity => `
                 <li class="list-group-item">
-                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${excerpt}</div>
+                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${entity.text}</div>
                 </li>
             `).join('');
-            excerptsHTML += '</ul></div>';
+            entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
-                    <div>
+                    ${favicon}
+                    <div style="flex: 1; margin: 0 15px;">
                         <h5>${index + 1}. ${urlSource}</h5>
-                        <h6 class="card-subtitle mb-2">${urlTitle}</h6>
+                        <h6 class="card-subtitle mb-0">${urlTitle}</h6>
                     </div>
                     <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
                 </div>
@@ -406,18 +358,18 @@ function generateSourceHTML(source, index, excerpts) {
                     <div class="card-body">
                         <p class="card-text"><strong>Link</strong>: <a href="${url}">${url}</a></p>
                         ${aiSummary}
-                        ${excerptsHTML}
+                        ${entitiesHTML}
                     </div>
                 </div>
             `;
             break;
         case 'file':
             // Modify the excerpt part to include multiple excerpts
-            excerptsHTML = excerpts.map(excerpt => `<p class="card-text">${excerpt}</p>`).join('');
+            entitiesHTML = entities.map(entity => `<p class="card-text">${entity.text}</p>`).join('');
             html = `
                 <div class="card-body">
                     <h5 class="card-title">${index + 1}. ${source.id}</h5>
-                    ${excerptsHTML}
+                    ${entitiesHTML}
                 </div>
             `;
             break;
@@ -442,20 +394,22 @@ function generateSourceHTML(source, index, excerpts) {
     return html;
 }
 
+let sourceMap = new Map(); // To keep track of sources and their excerpts
 function updateSources(newSources) {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = ''; // Clear previous sources
     newSources.forEach((source, i) => {
         if (sourceMap.has(source.id)) {
-            // If the source already exists, add the new excerpt
-            if (!sourceMap.get(source.id).excerpts.includes(source.entity.text)) {
-                sourceMap.get(source.id).excerpts.push(source.entity.text);
+            let existingEntities = sourceMap.get(source.id).entities;
+            // Check for duplicate using the entity's unique id
+            if (!existingEntities.some(entity => entity.pk === source.entity.pk)) {
+                existingEntities.push(source.entity); // Store the full entity
             }
         } else {
             // If it's a new source, add it to the map
             sourceMap.set(source.id, {
                 source: source,
-                excerpts: [source.entity.text],
+                entities: [source.entity],
                 originalIndex: sourceMap.size // To maintain original order
             });
         }
@@ -467,9 +421,11 @@ function updateSources(newSources) {
     // Sort the sources based on their original index
     const sortedSources = Array.from(sourceMap.values()).sort((a, b) => a.originalIndex - b.originalIndex);
     sortedSources.forEach((sourceData, i) => {
+        // Sort the entities by primary key
+        sourceData.entities.sort((a, b) => a.pk.localeCompare(b.pk));
         const sourceItem = document.createElement('div');
         sourceItem.className = 'card mb-3';
-        sourceItem.innerHTML = generateSourceHTML(sourceData.source, i, sourceData.excerpts);
+        sourceItem.innerHTML = generateSourceHTML(sourceData.source, i, sourceData.entities);
         // Make source cards collapsible
         sourceItem.querySelector('#collapseTrigger' + (i + 1)).addEventListener('click', () => {
             const collapseIcon = sourceItem.querySelector('#collapseIcon' + (i + 1));
