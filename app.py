@@ -1,11 +1,10 @@
-from flask import Flask, jsonify, redirect, request, render_template, Response, session, url_for
+from flask import Flask, jsonify, request, render_template, Response
 from json import dumps
 import requests
 import os
 
 
 app = Flask(__name__)
-app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
 API_URL = "http://0.0.0.0:8080"
 API_KEY = os.environ["OPB_TEST_API_KEY"]
@@ -34,19 +33,8 @@ def index():
 def chat():
     if request.method == "POST":
         # Get the message and files from the request
-        message = request.form.get("message")
         files = request.files.getlist("files")
-
-        # If session_id is not in the session, create a new session
-        if "session_id" not in session:
-            try:
-                with api_request("initialize_session", data={"bot_id": BOT_ID}) as r:
-                    r.raise_for_status()
-                    session["session_id"] = r.json()["session_id"]
-            except Exception as e:
-                return jsonify({"error": f"Failed to initialize session: {e}"}), 400
-
-        session_id = session["session_id"]
+        session_id = request.form.get("sessionId")
 
         if files:
             # Prepare files for upload
@@ -65,16 +53,14 @@ def chat():
             except Exception as e:
                 return jsonify({"error": f"Failed to upload files: {e}"}), 400
 
-        if message:
-            session["message"] = message
-
-        return jsonify({"message": "Success"}), 200
+        return jsonify({"message": "Success", "sessionId": session_id}), 200
     else:
-        # Retrieve the stored request data from the session
+        session_id = request.args.get("sessionId")
+        message = request.args.get("message")
         request_data = {
             "bot_id": BOT_ID,
-            "session_id": session.get("session_id"),
-            "message": session.get("message")
+            "session_id": session_id,
+            "message": message,
         }
 
         def generate():
@@ -94,7 +80,46 @@ def chat():
 
         return Response(generate(), mimetype="text/event-stream")
 
-@app.route("/clear_session")
-def clear_session():
-    session.clear()  # Clear all session data
-    return redirect(url_for('index'))  # Redirect to the home page
+
+@app.route("/new_session", methods=["POST"])
+def new_session():
+    try:
+        with api_request("initialize_session", data={"bot_id": BOT_ID}) as r:
+            r.raise_for_status()
+            return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": f"Failed to create session: {e}"}), 400
+
+
+@app.route("/sessions", methods=["GET"])
+def get_sessions():
+    # Get all sessions for this browser from localStorage on client side
+    # Then fetch session info from API for each session ID
+    try:
+        sessions = []
+        for session_id in request.args.getlist("ids[]"):
+            data = {"session_id": session_id}
+            with api_request("fetch_session", data=data) as r:
+                r.raise_for_status()
+                session_data = r.json()
+                sessions.append({
+                    "id": session_id,
+                    "title": session_data.get("title", "Untitled Chat"),
+                    "lastModified": session_data.get("last_modified"),
+                })
+        print(sessions)
+        return jsonify(sessions)
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch sessions: {e}"}), 400
+
+
+@app.route("/get_session_messages/<session_id>", methods=["GET"])
+def get_session_messages(session_id):
+    try:
+        data = {"session_id": session_id}
+        with api_request("fetch_session", data=data) as r:
+            r.raise_for_status()
+            session_data = r.json()
+            return jsonify({"history": session_data.get("history")})
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch messages: {e}"}), 400

@@ -84,12 +84,11 @@ function formatDate(dateString) {
 }
 
 let eventSource;
+let currentSessionId = null;
 async function sendMessage() {
     const userInput = document.getElementById('user-input');
     const chatMessages = document.getElementById('chat-messages');
-
-    if (userInput.value.trim() === '' && uploadedFiles.length === 0)
-        return;
+    if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
 
     // Add user message
     addMessageToChat('user', userInput.value);
@@ -106,48 +105,41 @@ async function sendMessage() {
     botMessageContainer.className = 'message bot-message-container';
     botMessageContainer.innerHTML = '<div class="bot-message"></div>';
 
-    // Close any existing SSE connection
     if (eventSource) {
         eventSource.close();
     }
 
     try {
-        // Prepare request data
-        const formData = new FormData();
-        formData.append('message', userMessage);
+        // Only use FormData if we have files
         if (userFiles.length > 0) {
+            const formData = new FormData();
+            formData.append('sessionId', currentSessionId);
             userFiles.forEach((file) => {
-                formData.append(`files`, file);
+                formData.append('files', file);
             });
-        }
 
-        const response = await fetch('/chat', {
-            method: 'POST',
-            body: formData
+            const response = await fetch('/chat', {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) throw new Error('Failed to upload files');
+        }
+        chatMessages.appendChild(botMessageContainer);
+        // Prepare stream args
+        const params = new URLSearchParams({
+            sessionId: currentSessionId,
+            message: userMessage
         });
-
-        if (response.ok) {
-            chatMessages.appendChild(botMessageContainer);
-            eventSource = new EventSource('/chat');
-            eventSource.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                handleStreamEvent(data, botMessageContainer);
-            };
-            eventSource.onerror = function(error) {
-                console.error('EventSource failed:', error);
-                console.log('EventSource: ', eventSource);
-                if (error.target instanceof EventSource && eventSource.readyState === EventSource.CLOSED) {
-                    console.error('EventSource closed by server.');
-                } else {
-                    eventSource.close();
-                    console.log('EventSource closed by client.');
-                }
-                addMessageToChat('error', 'An error occurred while streaming the response.');
-            };
-        } else {
-            addMessageToChat('error', 'An error occurred causing an unexpected response code.');
-        }
-
+        eventSource = new EventSource(`/chat?${params}`);
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            handleStreamEvent(data, botMessageContainer);
+        };
+        eventSource.onerror = function(error) {
+            console.error('EventSource failed:', error);
+            eventSource.close();
+            addMessageToChat('error', 'An error occurred while streaming the response.');
+        };
     } catch (error) {
         console.error('Error: ', error);
         addMessageToChat('error', 'An error occurred while sending your message.');
@@ -155,8 +147,9 @@ async function sendMessage() {
 }
 
 let tempContainer = null;
+let content = null;
 let processedElements = new Set();
-function handleStreamEvent(data, container) {
+async function handleStreamEvent(data, container) {
     const botMessageElement = container.querySelector('.bot-message');
 
     switch(data.type) {
@@ -200,6 +193,7 @@ function handleStreamEvent(data, container) {
             if (eventSource) {
                 eventSource.close();
                 addMessageIcons(container);
+                await displaySessions();
             }
             break;
         default:
@@ -240,9 +234,9 @@ function addMessageIcons(container) {
     const iconsDiv = document.createElement('div');
     iconsDiv.className = 'message-icons';
     iconsDiv.innerHTML = `
-        <i class="bi bi-hand-thumbs-up message-icon" data-bs-toggle="modal" data-bs-target="#likeModal" onclick="setFeedbackAction(this)" title="Like"></i>
-        <i class="bi bi-hand-thumbs-down message-icon" data-bs-toggle="modal" data-bs-target="#dislikeModal" onclick="setFeedbackAction(this)" title="Dislike"></i>
-        <i class="bi bi-clipboard message-icon" onclick="copyMessage(this)" title="Copy"></i>
+        <i class="bi bi-hand-thumbs-up icon" data-bs-toggle="modal" data-bs-target="#likeModal" onclick="setFeedbackAction(this)" title="Like"></i>
+        <i class="bi bi-hand-thumbs-down icon" data-bs-toggle="modal" data-bs-target="#dislikeModal" onclick="setFeedbackAction(this)" title="Dislike"></i>
+        <i class="bi bi-clipboard icon" onclick="copyMessage(this)" title="Copy"></i>
     `;
     container.appendChild(iconsDiv);
 }
@@ -454,6 +448,172 @@ function copyMessage(element) {
     });
 }
 
+// When page loads, either get session ID from URL or create new session
+async function initializeChat() {
+    // Check URL for session ID
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session');
+
+    if (sessionId) {
+        // Load existing session
+        currentSessionId = sessionId;
+        await loadSessionMessages(sessionId);
+    } else {
+        // Start new session
+        await startNewSession();
+    }
+}
+
+async function startNewSession() {
+    try {
+        const response = await fetch('/new_session', { method: 'POST' });
+        if (response.ok) {
+            const data = await response.json();
+            currentSessionId = data.session_id;
+            saveSession(currentSessionId);
+            // Update URL without reloading page
+            window.history.pushState({}, '', `?session=${currentSessionId}`);
+        }
+    } catch (error) {
+        console.error('Failed to create new session:', error);
+    }
+}
+
+async function loadSessionMessages(sessionId) {
+    // Clear current chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.innerHTML = '';
+    // Clear current source list
+    sourceMap.clear();
+
+    try {
+        const response = await fetch(`/get_session_messages/${sessionId}`);
+        if (response.ok) {
+            const messages = await response.json();
+            messages.history.forEach(msg => {
+                // TODO: handle tool call/result messages
+                // switch (msg.role) {
+                //     case "system":
+                //         return;
+                //     case "assistant":
+                //         if (!msg.content) {
+                //             // No message content, so it's a tool call
+                //             msg.tool_calls.forEach(toolCall => {
+                                
+                //             });
+                //         }
+                // }
+                if (msg.role === "system")
+                    return;
+                let role = msg.role === "assistant" ? "bot" : msg.role;
+                addMessageToChat(role, msg.content);
+            });
+        }
+    } catch (error) {
+        console.error('Failed to load session messages:', error);
+        addMessageToChat('error', 'Failed to load conversation history');
+    }
+}
+
+// Store session ID when created
+function saveSession(sessionId) {
+    let savedSessions = JSON.parse(localStorage.getItem('sessions') || '[]');
+
+    // check if savedSessions contains an object with id == sessionId
+    if (savedSessions.some(session => session.id === sessionId)) {
+        return;
+    }
+
+    savedSessions.push({"id": sessionId});
+    localStorage.setItem('sessions', JSON.stringify(savedSessions));
+}
+
+// Load all saved sessions
+async function loadSavedSessions() {
+    const savedSessions = JSON.parse(localStorage.getItem('sessions') || '[]');
+    if (savedSessions.length === 0) return [];
+    const response = await fetch(`/sessions?${savedSessions.map(session => `ids[]=${session.id}`).join('&')}`);
+    if (!response.ok) throw new Error('Failed to load sessions');
+    return response.json();
+}
+
+// Switch to different session
+async function switchSession(sessionId) {
+    // Close existing EventSource if any
+    if (eventSource) {
+        eventSource.close();
+    }
+    
+    currentSessionId = sessionId;
+
+    // Update URL without page reload
+    window.history.pushState({}, '', `?session=${sessionId}`);
+
+    // Load session messages
+    await loadSessionMessages(sessionId);
+}
+
+async function displaySessions() {
+    try {
+        const sessions = await loadSavedSessions();
+        // Save latest session info to local storage
+        localStorage.setItem('sessions', JSON.stringify(sessions));
+        console.log(sessions);
+        const sessionsList = document.getElementById('sessionsList');
+        sessionsList.innerHTML = '';
+        
+        // Group sessions by date
+        const grouped = {
+            last_week: [],
+            last_month: [],
+            older: []
+        };
+        
+        const now = new Date();
+        sessions.forEach(session => {
+            if (!session.lastModified)
+                return;
+            const age = (now - new Date(session.lastModified)) / (1000 * 60 * 60 * 24);
+            if (age <= 7) grouped.last_week.push(session);
+            else if (age <= 30) grouped.last_month.push(session);
+            else grouped.older.push(session);
+        });
+
+        grouped.last_week.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+        grouped.last_month.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+        grouped.older.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+        
+        // Render sessions
+        for (const [period, sessions] of Object.entries(grouped)) {
+            if (sessions.length === 0) continue;
+            
+            const timeGroup = document.createElement('div');
+            timeGroup.className = 'time-group mb-3';
+            timeGroup.innerHTML = `
+                <div class="time-label">${period.replace('_', ' ')}</div>
+                <ul class="list-unstyled">
+                    ${sessions.map(session => `
+                        <li class="conversation-item">
+                            <a href="#" class="text-decoration-none text-truncate d-block" 
+                               onclick="switchSession('${session.id}'); return false;">
+                                ${session.title}
+                            </a>
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+            sessionsList.appendChild(timeGroup);
+        }
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+    }
+}
+
+async function startAndSwitchSession() {
+    await startNewSession();
+    await switchSession(currentSessionId);
+}
+
 // Allow sending message with Enter key
 document.getElementById('user-input').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
@@ -475,5 +635,23 @@ document.getElementById('provider').addEventListener('click', function () {
             <option selected value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
             <option value=claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
         `;
+    }
+});
+
+// Initialize everything when page loads
+document.addEventListener('DOMContentLoaded', async () => {
+    await initializeChat();
+    await displaySessions();
+});
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session');
+    
+    if (sessionId) {
+        await switchSession(sessionId);
+    } else {
+        await startNewSession();
     }
 });
