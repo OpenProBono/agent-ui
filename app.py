@@ -107,7 +107,6 @@ def get_sessions():
                     "title": session_data.get("title", "Untitled Chat"),
                     "lastModified": session_data.get("last_modified"),
                 })
-        print(sessions)
         return jsonify(sessions)
     except Exception as e:
         return jsonify({"error": f"Failed to fetch sessions: {e}"}), 400
@@ -117,9 +116,9 @@ def get_sessions():
 def get_session_messages(session_id):
     try:
         data = {"session_id": session_id}
-        with api_request("fetch_session", data=data) as r:
+        with api_request("fetch_session_formatted_history", data=data) as r:
             r.raise_for_status()
             session_data = r.json()
-            return jsonify({"history": session_data.get("history")})
+            return jsonify(session_data)
     except Exception as e:
         return jsonify({"error": f"Failed to fetch messages: {e}"}), 400

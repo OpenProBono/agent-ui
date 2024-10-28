@@ -87,7 +87,6 @@ let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
     const userInput = document.getElementById('user-input');
-    const chatMessages = document.getElementById('chat-messages');
     if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
 
     // Add user message
@@ -99,11 +98,6 @@ async function sendMessage() {
     userInput.value = '';
     uploadedFiles = [];
     updateFileList();
-
-    // Create bot message container
-    let botMessageContainer = document.createElement('div');
-    botMessageContainer.className = 'message bot-message-container';
-    botMessageContainer.innerHTML = '<div class="bot-message"></div>';
 
     if (eventSource) {
         eventSource.close();
@@ -124,7 +118,6 @@ async function sendMessage() {
             });
             if (!response.ok) throw new Error('Failed to upload files');
         }
-        chatMessages.appendChild(botMessageContainer);
         // Prepare stream args
         const params = new URLSearchParams({
             sessionId: currentSessionId,
@@ -133,7 +126,7 @@ async function sendMessage() {
         eventSource = new EventSource(`/chat?${params}`);
         eventSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            handleStreamEvent(data, botMessageContainer);
+            handleStreamEvent(data);
         };
         eventSource.onerror = function(error) {
             console.error('EventSource failed:', error);
@@ -146,19 +139,15 @@ async function sendMessage() {
     }
 }
 
-let tempContainer = null;
-let content = null;
-let processedElements = new Set();
-async function handleStreamEvent(data, container) {
-    const botMessageElement = container.querySelector('.bot-message');
-
+let botMessageContainer = null;
+async function handleStreamEvent(data) {
     switch(data.type) {
         case 'tool_call':
-            content = `<h5>Tool Call</h5>
+            let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
             <p><strong>Arguments:</strong> ${data.args}</p>
             <p><i>The tool is gathering sources<span id="${data.id}-dots" class="dots"></span></i></p>`;
-            addMessageToChat('tool', content);
+            addMessageToChat('tool', toolContent);
             break;
         case 'tool_result':
             updateSources(data.results);
@@ -167,32 +156,34 @@ async function handleStreamEvent(data, container) {
             toolDots.innerHTML = '...finished.';
             break;
         case 'response':
-            if (!tempContainer) {
-                content = '';
-                tempContainer = document.createElement('div');
-                processedElements.clear();
+            if (!botMessageContainer) {
+                // It's the beginning of a bot message
+                // Create bot message container
+                botMessageContainer = document.createElement('div');
+                botMessageContainer.className = 'message bot-message-container';
+                botMessageContainer.innerHTML = '<div class="bot-message"></div>';
+                addMessageIcons(botMessageContainer);
+                // Append it to the chatbox
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.appendChild(botMessageContainer);
             }
-            content += data.content;
+            let content = data.content;
             const html = marked.parse(content);
+            let tempContainer = document.createElement('div');
             tempContainer.innerHTML = html;
-            
+
             // Add fade-in class to each new element
             tempContainer.querySelectorAll('p, ul li, ol li').forEach(el => {
-                if (!processedElements.has(el.textContent)) {
-                    el.classList.add('bot-message-stream');
-                    processedElements.add(el.textContent);
-                } else {
-                    el.classList.remove('bot-message-stream');
-                }
+                el.classList.add('bot-message-stream');
             });
             
+            let botMessageElement = botMessageContainer.querySelector('.bot-message');
             botMessageElement.appendChild(tempContainer);
-            tempContainer = null;
             break;
         case 'done':
             if (eventSource) {
                 eventSource.close();
-                addMessageIcons(container);
+                botMessageContainer = null;
                 await displaySessions();
             }
             break;
@@ -201,7 +192,8 @@ async function handleStreamEvent(data, container) {
     }
 
     // Scroll to bottom
-    container.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (botMessageContainer)
+        botMessageContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
 function addMessageToChat(type, content) {
@@ -222,11 +214,7 @@ function addMessageToChat(type, content) {
         content += '</div>';
     }
     messageDiv.innerHTML = `<div class="${type}-message">${content}</div>`;
-    if (type === 'tool') {
-        chatMessages.insertBefore(messageDiv, chatMessages.lastChild);
-    } else {
-        chatMessages.appendChild(messageDiv);
-    }
+    chatMessages.appendChild(messageDiv);
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
@@ -491,23 +479,14 @@ async function loadSessionMessages(sessionId) {
         if (response.ok) {
             const messages = await response.json();
             messages.history.forEach(msg => {
-                // TODO: handle tool call/result messages
-                // switch (msg.role) {
-                //     case "system":
-                //         return;
-                //     case "assistant":
-                //         if (!msg.content) {
-                //             // No message content, so it's a tool call
-                //             msg.tool_calls.forEach(toolCall => {
-                                
-                //             });
-                //         }
-                // }
-                if (msg.role === "system")
-                    return;
-                let role = msg.role === "assistant" ? "bot" : msg.role;
-                addMessageToChat(role, msg.content);
+                if (msg.type === "user")
+                    addMessageToChat(msg.type, msg.content);
+                else {
+                    handleStreamEvent(msg);
+                }
             });
+            // No done event in loaded messages so reset the container
+            botMessageContainer = null;
         }
     } catch (error) {
         console.error('Failed to load session messages:', error);
