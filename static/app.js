@@ -83,6 +83,24 @@ function formatDate(dateString) {
     return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
 }
 
+function longestCommonSubstring(str1, str2) {
+    const m = Array(str1.length + 1).fill().map(() => Array(str2.length + 1).fill(0));
+    let longest = 0;
+    for (let x = 1; x <= str1.length; x++) {
+        for (let y = 1; y <= str2.length; y++) {
+            if (str1[x - 1] === str2[y - 1]) {
+                m[x][y] = m[x - 1][y - 1] + 1;
+                longest = Math.max(longest, m[x][y]);
+            }
+        }
+    }
+    return longest;
+}
+
+function buildCitationMap(msg) {
+    console.log(msg);
+}
+
 let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
@@ -104,6 +122,9 @@ async function sendMessage() {
     }
 
     try {
+        if (!currentSessionId) {
+            await getNewSession();
+        }
         // Only use FormData if we have files
         if (userFiles.length > 0) {
             const formData = new FormData();
@@ -140,6 +161,7 @@ async function sendMessage() {
 }
 
 let botMessageContainer = null;
+let rawBotMessageContent = '';
 async function handleStreamEvent(data) {
     switch(data.type) {
         case 'tool_call':
@@ -166,8 +188,10 @@ async function handleStreamEvent(data) {
                 // Append it to the chatbox
                 const chatMessages = document.getElementById('chat-messages');
                 chatMessages.appendChild(botMessageContainer);
+                rawBotMessageContent = '';
             }
             let content = data.content;
+            rawBotMessageContent += data.content;
             const html = marked.parse(content);
             let tempContainer = document.createElement('div');
             tempContainer.innerHTML = html;
@@ -176,16 +200,20 @@ async function handleStreamEvent(data) {
             tempContainer.querySelectorAll('p, ul li, ol li').forEach(el => {
                 el.classList.add('bot-message-stream');
             });
-            
+
             let botMessageElement = botMessageContainer.querySelector('.bot-message');
             botMessageElement.appendChild(tempContainer);
             break;
         case 'done':
             if (eventSource) {
                 eventSource.close();
-                botMessageContainer = null;
-                await displaySessions();
+                buildCitationMap(rawBotMessageContent);
             }
+            botMessageContainer = null;
+            let sessions = loadSavedSessions();
+            // If it's a new session, get the title/timestamp and add it to local storage
+            if (!sessions.find(session => session.id == currentSessionId))
+                await saveCurrentSession();
             break;
         default:
             console.warn('Unknown event type:', data.type);
@@ -224,7 +252,6 @@ function addMessageIcons(container) {
     iconsDiv.innerHTML = `
         <i class="bi bi-hand-thumbs-up icon" data-bs-toggle="modal" data-bs-target="#likeModal" onclick="setFeedbackAction(this)" title="Like"></i>
         <i class="bi bi-hand-thumbs-down icon" data-bs-toggle="modal" data-bs-target="#dislikeModal" onclick="setFeedbackAction(this)" title="Dislike"></i>
-        <i class="bi bi-clipboard icon" onclick="copyMessage(this)" title="Copy"></i>
     `;
     container.appendChild(iconsDiv);
 }
@@ -401,9 +428,6 @@ function updateSources(newSources) {
         }
     });
 
-    // Clear and rebuild the entire list
-    sourceList.innerHTML = '';
-    
     // Sort the sources based on their original index
     const sortedSources = Array.from(sourceMap.values()).sort((a, b) => a.originalIndex - b.originalIndex);
     sortedSources.forEach((sourceData, i) => {
@@ -429,36 +453,12 @@ function updateSources(newSources) {
     });
 }
 
-function copyMessage(element) {
-    const messageText = element.closest('.bot-message-container').querySelector('.bot-message').textContent;
-    navigator.clipboard.writeText(messageText).then(() => {
-        alert('Message copied to clipboard!');
-    });
-}
-
-// When page loads, either get session ID from URL or create new session
-async function initializeChat() {
-    // Check URL for session ID
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session');
-
-    if (sessionId) {
-        // Load existing session
-        currentSessionId = sessionId;
-        await loadSessionMessages(sessionId);
-    } else {
-        // Start new session
-        await startNewSession();
-    }
-}
-
-async function startNewSession() {
+async function getNewSession() {
     try {
         const response = await fetch('/new_session', { method: 'POST' });
         if (response.ok) {
             const data = await response.json();
             currentSessionId = data.session_id;
-            saveSession(currentSessionId);
             // Update URL without reloading page
             window.history.pushState({}, '', `?session=${currentSessionId}`);
         }
@@ -467,12 +467,19 @@ async function startNewSession() {
     }
 }
 
-async function loadSessionMessages(sessionId) {
+function clearSessionMessages() {
     // Clear current chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.innerHTML = '';
-    // Clear current source list
+    // Clear current source list mapping
     sourceMap.clear();
+    // Clear current source list HTML
+    const sourceList = document.getElementById('source-list');
+    sourceList.innerHTML = '';
+}
+
+async function switchSession(sessionId) {
+    clearSessionMessages();
 
     try {
         const response = await fetch(`/get_session_messages/${sessionId}`);
@@ -483,10 +490,13 @@ async function loadSessionMessages(sessionId) {
                     addMessageToChat(msg.type, msg.content);
                 else {
                     handleStreamEvent(msg);
+                    // No done event in loaded messages so reset the container
+                    botMessageContainer = null;
                 }
             });
-            // No done event in loaded messages so reset the container
-            botMessageContainer = null;
+            currentSessionId = sessionId;
+            // Update URL without reloading page
+            window.history.pushState({}, '', `?session=${sessionId}`);
         }
     } catch (error) {
         console.error('Failed to load session messages:', error);
@@ -494,103 +504,96 @@ async function loadSessionMessages(sessionId) {
     }
 }
 
-// Store session ID when created
-function saveSession(sessionId) {
-    let savedSessions = JSON.parse(localStorage.getItem('sessions') || '[]');
-
-    // check if savedSessions contains an object with id == sessionId
-    if (savedSessions.some(session => session.id === sessionId)) {
-        return;
-    }
-
-    savedSessions.push({"id": sessionId});
-    localStorage.setItem('sessions', JSON.stringify(savedSessions));
+function clearSession() {
+    clearSessionMessages();
+    // Clear old session from URL
+    window.history.pushState({}, '', window.location.pathname);
+    // Clear session ID variable
+    currentSessionId = null;
 }
 
-// Load all saved sessions
-async function loadSavedSessions() {
-    const savedSessions = JSON.parse(localStorage.getItem('sessions') || '[]');
-    if (savedSessions.length === 0) return [];
-    const response = await fetch(`/sessions?${savedSessions.map(session => `ids[]=${session.id}`).join('&')}`);
-    if (!response.ok) throw new Error('Failed to load sessions');
-    return response.json();
+async function saveCurrentSession() {
+    const response = await fetch(`/sessions?ids[]=${currentSessionId}`);
+    if (!response.ok) throw new Error('Failed to get sessions from server');
+    let fetchedSessions = await response.json();
+    let savedSessions = loadSavedSessions();
+    let newSessions = savedSessions.concat(fetchedSessions);
+    saveSessions(newSessions);
+    addSessionToSidebar(fetchedSessions[0]);
 }
 
-// Switch to different session
-async function switchSession(sessionId) {
-    // Close existing EventSource if any
-    if (eventSource) {
-        eventSource.close();
-    }
+function loadSavedSessions() {
+    return JSON.parse(localStorage.getItem('sessions') || '[]');
+}
+
+function saveSessions(sessions) {
+    localStorage.setItem('sessions', JSON.stringify(sessions));
+}
+
+function displaySessionsSidebar() {
+    const sessions = loadSavedSessions();
+    const sessionsList = document.getElementById('sessionsList');
+    sessionsList.innerHTML = '';
     
-    currentSessionId = sessionId;
+    // Group sessions by date
+    const grouped = {
+        last_week: [],
+        last_month: [],
+        older: []
+    };
+    
+    const now = new Date();
+    sessions.forEach(session => {
+        if (!session.lastModified || !session.title)
+            return;
+        const age = (now - new Date(session.lastModified)) / (1000 * 60 * 60 * 24);
+        if (age <= 7) grouped.last_week.push(session);
+        else if (age <= 30) grouped.last_month.push(session);
+        else grouped.older.push(session);
+    });
 
-    // Update URL without page reload
-    window.history.pushState({}, '', `?session=${sessionId}`);
-
-    // Load session messages
-    await loadSessionMessages(sessionId);
-}
-
-async function displaySessions() {
-    try {
-        const sessions = await loadSavedSessions();
-        // Save latest session info to local storage
-        localStorage.setItem('sessions', JSON.stringify(sessions));
-        console.log(sessions);
-        const sessionsList = document.getElementById('sessionsList');
-        sessionsList.innerHTML = '';
+    grouped.last_week.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+    grouped.last_month.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+    grouped.older.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+    
+    // Render sessions
+    for (const [period, sessions] of Object.entries(grouped)) {
+        if (sessions.length === 0) continue;
         
-        // Group sessions by date
-        const grouped = {
-            last_week: [],
-            last_month: [],
-            older: []
-        };
-        
-        const now = new Date();
-        sessions.forEach(session => {
-            if (!session.lastModified)
-                return;
-            const age = (now - new Date(session.lastModified)) / (1000 * 60 * 60 * 24);
-            if (age <= 7) grouped.last_week.push(session);
-            else if (age <= 30) grouped.last_month.push(session);
-            else grouped.older.push(session);
-        });
-
-        grouped.last_week.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-        grouped.last_month.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-        grouped.older.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-        
-        // Render sessions
-        for (const [period, sessions] of Object.entries(grouped)) {
-            if (sessions.length === 0) continue;
-            
-            const timeGroup = document.createElement('div');
-            timeGroup.className = 'time-group mb-3';
-            timeGroup.innerHTML = `
-                <div class="time-label">${period.replace('_', ' ')}</div>
-                <ul class="list-unstyled">
-                    ${sessions.map(session => `
-                        <li class="conversation-item">
-                            <a href="#" class="text-decoration-none text-truncate d-block" 
-                               onclick="switchSession('${session.id}'); return false;">
-                                ${session.title}
-                            </a>
-                        </li>
-                    `).join('')}
-                </ul>
-            `;
-            sessionsList.appendChild(timeGroup);
-        }
-    } catch (error) {
-        console.error('Failed to load sessions:', error);
+        const timeGroup = document.createElement('div');
+        timeGroup.className = 'time-group mb-3';
+        timeGroup.innerHTML = `
+            <div class="time-label">${period.replace('_', ' ')}</div>
+            <ul class="list-unstyled">
+                ${sessions.map(session => `
+                    <li class="conversation-item">
+                        <a href="#" class="text-decoration-none text-truncate d-block" 
+                            onclick="switchSession('${session.id}'); return false;">
+                            ${session.title}
+                        </a>
+                    </li>
+                `).join('')}
+            </ul>
+        `;
+        sessionsList.appendChild(timeGroup);
     }
 }
 
-async function startAndSwitchSession() {
-    await startNewSession();
-    await switchSession(currentSessionId);
+function addSessionToSidebar(session) {
+    const sessionsList = document.getElementById('sessionsList');
+    const timeGroup = sessionsList.querySelector('.list-unstyled');
+    if (!timeGroup) {
+        // There aren't any sessions, build the list
+        displaySessionsSidebar();
+    } else {
+        const sessionListEntry = document.createElement('li');
+        sessionListEntry.className = "conversation-item";
+        sessionListEntry.innerHTML = `<a href="#" class="text-decoration-none text-truncate d-block" 
+            onclick="switchSession('${session.id}'); return false;">
+            ${session.title}
+        </a>`;
+        timeGroup.insertBefore(sessionListEntry, timeGroup.firstChild);
+    }
 }
 
 // Allow sending message with Enter key
@@ -618,19 +621,28 @@ document.getElementById('provider').addEventListener('click', function () {
 });
 
 // Initialize everything when page loads
-document.addEventListener('DOMContentLoaded', async () => {
-    await initializeChat();
-    await displaySessions();
-});
-
-// Handle browser back/forward buttons
-window.addEventListener('popstate', async () => {
+document.addEventListener('DOMContentLoaded', async function() {
+    displaySessionsSidebar();
+    // Check URL for session ID
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('session');
-    
+
     if (sessionId) {
+        // Load existing session
+        currentSessionId = sessionId;
         await switchSession(sessionId);
-    } else {
-        await startNewSession();
     }
+    // collapse and expand sidebars
+    const leftSidebar = document.getElementById("left-sidebar");
+    const rightSidebar = document.getElementById("right-sidebar");
+    const toggleLeftIcon = document.querySelector(".bi-layout-text-sidebar-reverse");
+    const toggleRightIcon = document.querySelector(".bi-layout-text-sidebar");
+
+    toggleLeftIcon.addEventListener("click", () => {
+        leftSidebar.classList.toggle("collapsed");
+    });
+
+    toggleRightIcon.addEventListener("click", () => {
+        rightSidebar.classList.toggle("collapsed");
+    });
 });
