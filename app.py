@@ -81,7 +81,7 @@ def chat():
         return Response(generate(), mimetype="text/event-stream")
 
 
-@app.route("/new_session", methods=["POST"])
+@app.route("/new_session", methods=["GET"])
 def new_session():
     try:
         with api_request("initialize_session", data={"bot_id": BOT_ID}) as r:
@@ -120,5 +120,17 @@ def get_session_messages(session_id):
             r.raise_for_status()
             session_data = r.json()
             return jsonify(session_data)
+    except Exception as e:
+        return jsonify({"error": f"Failed to fetch messages: {e}"}), 400
+
+
+@app.route("/get_cited_clauses", methods=["POST"])
+def get_cited_clauses():
+    try:
+        message = request.get_json()["text"]
+        data = {"message": message}
+        with api_request("get_cited_clauses", data=data) as r:
+            r.raise_for_status()
+            return r.json()
     except Exception as e:
         return jsonify({"error": f"Failed to fetch messages: {e}"}), 400

@@ -193,3 +193,10 @@ body, html {
     cursor: pointer;
     margin-top: 0; /* Adjust to center vertically if needed */
 }
+.citation-link {
+    color: blue;
+    cursor: pointer;
+}
+.highlighted-clause {
+    position: relative;
+}
