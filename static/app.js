@@ -83,7 +83,7 @@ function formatDate(dateString) {
     return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
 }
 
-async function processCitations(text) {
+async function processCitations(text, botMessageIndex) {
     // Get the clause-to-citation mapping
     const response = await fetch('/get_cited_clauses', {
         method: 'POST',
@@ -97,7 +97,8 @@ async function processCitations(text) {
         return;
     
     // Get the bot message container
-    const botMessage = document.querySelector('.bot-message');
+    const botMessage = document.querySelector(`#bot-message-${botMessageIndex}`);
+    // Remove fade in class to add citation links without animation
     botMessage.querySelectorAll('.bot-message-stream').forEach(element => {
         element.classList.remove("bot-message-stream");
     });
@@ -121,7 +122,7 @@ async function processCitations(text) {
     });
 
     botMessage.innerHTML = htmlContent;
-    addCitationHandlers(citationMapping.cited_clauses);
+    addCitationHandlers(citationMapping.cited_clauses, botMessageIndex);
 }
 
 function longestDisjointCommonSubstrings(s1, s2) {
@@ -205,7 +206,7 @@ function scrollToHighlight(element) {
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function addCitationHandlers(citedClauses) {
+function addCitationHandlers(citedClauses, botMessageIndex) {
     let highlightColors = [
         "#FFFF99", "#FFDD99", "#FFCC99", "#FFB6B6", "#FFD700", "#B3FF99", "#99FFFF", "#99CCFF", "#B6A8FF", "#FF99CC", 
         "#FFC299", "#FFEB99", "#FFFA99", "#FFD2A6", "#FFF5B7", "#FFF8DC", "#F9E1A7", "#F8C8DC", "#F6C3A4", "#F5B7B1", 
@@ -297,9 +298,9 @@ function addCitationHandlers(citedClauses) {
                         for (let i = match.startIndex; i < match.endIndex; i++) {
                             highlightedRegions[i] = true;
                         }
-                        
+
                         // Highlight clause in response
-                        const botMessage = document.querySelector('.bot-message');
+                        const botMessage = document.querySelector(`#bot-message-${botMessageIndex}`);
                         botMessage.innerHTML = botMessage.innerHTML.replace(
                             match.text,
                             `<span class="active-highlight" 
@@ -403,8 +404,12 @@ async function sendMessage() {
 
 let botMessageContainer = null;
 let rawBotMessageContent = '';
+let botMessageIndex = 1;
 async function handleStreamEvent(data) {
     switch(data.type) {
+        case 'user':
+            addMessageToChat(data.type, data.content);
+            break;
         case 'tool_call':
             let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
@@ -423,6 +428,7 @@ async function handleStreamEvent(data) {
                 // It's the beginning of a bot message
                 // Create bot message container
                 botMessageContainer = document.createElement('div');
+                botMessageContainer.id = `bot-message-${botMessageIndex}`;
                 botMessageContainer.className = 'message bot-message-container';
                 botMessageContainer.innerHTML = '<div class="bot-message"></div>';
                 addMessageIcons(botMessageContainer);
@@ -448,9 +454,10 @@ async function handleStreamEvent(data) {
         case 'done':
             if (eventSource) {
                 eventSource.close();
-                processCitations(rawBotMessageContent);
             }
+            await processCitations(rawBotMessageContent, botMessageIndex);
             botMessageContainer = null;
+            botMessageIndex++;
             let sessions = loadSavedSessions();
             // If it's a new session, get the title/timestamp and add it to local storage
             if (!sessions.find(session => session.id == currentSessionId))
@@ -743,18 +750,11 @@ async function switchSession(sessionId) {
         const response = await fetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
             const messages = await response.json();
-            messages.history.forEach(msg => {
-                if (msg.type === "user")
-                    addMessageToChat(msg.type, msg.content);
-                else {
-                    handleStreamEvent(msg);
-                    if (msg.type === "response")
-                        processCitations(msg.content);
-                    // No done event in loaded messages so reset the container
-                    botMessageContainer = null;
-                }
-            });
+            for (const msg of messages.history) {
+                await handleStreamEvent(msg);
+            }
             currentSessionId = sessionId;
+            botMessageIndex = 1;
             // Update URL without reloading page
             window.history.pushState({}, '', `?session=${sessionId}`);
         }
