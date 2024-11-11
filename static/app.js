@@ -346,6 +346,14 @@ function addCitationHandlers(citedClauses, botMessageIndex) {
 let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
+    // Get bot from the URL (assuming it's a URL parameter like ?bot=xyz)
+    const urlParams = new URLSearchParams(window.location.search);
+    const botId = urlParams.get('bot');
+    if (!botId) {
+        alert('No bot ID provided in URL.');
+        return;
+    }
+
     const userInput = document.getElementById('user-input');
     if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
 
@@ -365,7 +373,7 @@ async function sendMessage() {
 
     try {
         if (!currentSessionId) {
-            await getNewSession();
+            await getNewSession(botId);
         }
         // Only use FormData if we have files
         if (userFiles.length > 0) {
@@ -718,14 +726,14 @@ function updateSources(newSources) {
     });
 }
 
-async function getNewSession() {
+async function getNewSession(botId) {
     try {
-        const response = await fetch('/new_session');
+        const response = await fetch(`/new_session/${botId}`);
         if (response.ok) {
             const data = await response.json();
             currentSessionId = data.session_id;
-            // Update URL without reloading page
-            window.history.pushState({}, '', `?session=${currentSessionId}`);
+            // Update URL without reloading page, adding session ID to URL
+            window.history.pushState({}, '', `?bot=${botId}&session=${currentSessionId}`);
         }
     } catch (error) {
         console.error('Failed to create new session:', error);
@@ -755,8 +763,18 @@ async function switchSession(sessionId) {
             }
             currentSessionId = sessionId;
             botMessageIndex = 1;
-            // Update URL without reloading page
-            window.history.pushState({}, '', `?session=${sessionId}`);
+
+            // Retrieve bot from local storage
+            let sessions = loadSavedSessions();
+            let session = sessions.find(session => session.id === currentSessionId);
+            let currentBotId = session.botId;
+
+            if (!currentBotId) {
+                console.error("Failed to find bot for session:", sessionId);
+            }
+
+            // Update URL to include both sessionId and bot
+            window.history.pushState({}, '', `?bot=${currentBotId}&session=${sessionId}`);
         }
     } catch (error) {
         console.error('Failed to load session messages:', error);
@@ -766,8 +784,18 @@ async function switchSession(sessionId) {
 
 function clearSession() {
     clearSessionMessages();
-    // Clear old session from URL
-    window.history.pushState({}, '', window.location.pathname);
+
+    // Retrieve bot from the URL to preserve it
+    const urlParams = new URLSearchParams(window.location.search);
+    const botId = urlParams.get('bot');
+
+    // Update URL to remove session ID but retain bot
+    if (botId) {
+        window.history.pushState({}, '', `?bot=${botId}`);
+    } else {
+        window.history.pushState({}, '', window.location.pathname);
+    }
+
     // Clear session ID variable
     currentSessionId = null;
 }

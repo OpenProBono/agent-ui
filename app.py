@@ -9,7 +9,6 @@ app = Flask(__name__)
 API_URL = "http://0.0.0.0:8080"
 API_KEY = os.environ["OPB_TEST_API_KEY"]
 HEADERS = {"X-API-KEY": API_KEY}
-BOT_ID = "b3030cc8-2256-4924-8d85-6cf1c1d246c2"
 
 def api_request(endpoint, method="POST", data=None, files=None, params=None):
     url = f"{API_URL}/{endpoint}"
@@ -58,7 +57,6 @@ def chat():
         session_id = request.args.get("sessionId")
         message = request.args.get("message")
         request_data = {
-            "bot_id": BOT_ID,
             "session_id": session_id,
             "message": message,
         }
@@ -81,10 +79,10 @@ def chat():
         return Response(generate(), mimetype="text/event-stream")
 
 
-@app.route("/new_session", methods=["GET"])
-def new_session():
+@app.route("/new_session/<bot>", methods=["GET"])
+def new_session(bot):
     try:
-        with api_request("initialize_session", data={"bot_id": BOT_ID}) as r:
+        with api_request("initialize_session", data={"bot_id": bot}) as r:
             r.raise_for_status()
             return jsonify(r.json())
     except Exception as e:
@@ -106,6 +104,7 @@ def get_sessions():
                     "id": session_id,
                     "title": session_data.get("title", "Untitled Chat"),
                     "lastModified": session_data.get("last_modified"),
+                    "botId": session_data.get("bot_id"),
                 })
         return jsonify(sessions)
     except Exception as e:
