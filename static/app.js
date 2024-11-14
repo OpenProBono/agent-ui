@@ -754,28 +754,36 @@ function clearSessionMessages() {
 async function switchSession(sessionId) {
     clearSessionMessages();
 
+    // Update highlighted session
+    if (currentSessionId) {
+        document.getElementById(currentSessionId).classList.remove('active-session');
+    }
+    document.getElementById(sessionId).classList.add('active-session');
+
+    // Update current session
+    currentSessionId = sessionId;
+    botMessageIndex = 1;
+
+    // Retrieve bot from local storage
+    let sessions = loadSavedSessions();
+    let session = sessions.find(session => session.id === currentSessionId);
+    let currentBotId = session.botId;
+
+    if (!currentBotId) {
+        console.error("Failed to find bot for session:", sessionId);
+    }
+
+    // Update URL
+    window.history.pushState({}, '', `?bot=${currentBotId}&session=${sessionId}`);
+
+    // Get messages
     try {
         const response = await fetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
-            currentSessionId = sessionId;
-            botMessageIndex = 1;
-
             const messages = await response.json();
             for (const msg of messages.history) {
                 await handleStreamEvent(msg);
             }
-
-            // Retrieve bot from local storage
-            let sessions = loadSavedSessions();
-            let session = sessions.find(session => session.id === currentSessionId);
-            let currentBotId = session.botId;
-
-            if (!currentBotId) {
-                console.error("Failed to find bot for session:", sessionId);
-            }
-
-            // Update URL to include both sessionId and bot
-            window.history.pushState({}, '', `?bot=${currentBotId}&session=${sessionId}`);
         }
     } catch (error) {
         console.error('Failed to load session messages:', error);
@@ -855,7 +863,7 @@ function displaySessionsSidebar() {
             <div class="time-label">${period.replace('_', ' ')}</div>
             <ul class="list-unstyled">
                 ${sessions.map(session => `
-                    <li class="conversation-item">
+                    <li id="${session.id}" class="conversation-item">
                         <a href="#" class="text-decoration-none text-truncate d-block" 
                             onclick="switchSession('${session.id}'); return false;">
                             ${session.title}
@@ -877,7 +885,8 @@ function addSessionToSidebar(session) {
     } else {
         const sessionListEntry = document.createElement('li');
         sessionListEntry.className = "conversation-item";
-        sessionListEntry.innerHTML = `<a href="#" class="text-decoration-none text-truncate d-block" 
+        sessionListEntry.id = session.id;
+        sessionListEntry.innerHTML = `<a id="${session.id}" href="#" class="text-decoration-none text-truncate d-block" 
             onclick="switchSession('${session.id}'); return false;">
             ${session.title}
         </a>`;
