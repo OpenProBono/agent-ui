@@ -757,12 +757,13 @@ async function switchSession(sessionId) {
     try {
         const response = await fetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
+            currentSessionId = sessionId;
+            botMessageIndex = 1;
+
             const messages = await response.json();
             for (const msg of messages.history) {
                 await handleStreamEvent(msg);
             }
-            currentSessionId = sessionId;
-            botMessageIndex = 1;
 
             // Retrieve bot from local storage
             let sessions = loadSavedSessions();
