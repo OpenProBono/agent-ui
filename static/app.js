@@ -245,7 +245,19 @@ function addCitationHandlers(citedClauses, botMessageIndex) {
             const sourceEntities = source.entities;
             const sourceSummary = source.entities[0].metadata.ai_summary;
 
-            clauses.forEach(clause => {
+            const botMessage = document.querySelector(`#bot-message-${botMessageIndex}`);
+            // Get all the citation elements inside botMessage
+            const citationElements = Array.from(botMessage.querySelectorAll('.citation-link'));
+            // Find the part of the response that corresponds to the citation
+            const currentCitationIndex = citationElements.indexOf(e.target);
+            const previousCitation = currentCitationIndex > 0 ? citationElements[currentCitationIndex - 1] : null;
+            const prevCitationIndex = previousCitation ? botMessage.innerHTML.indexOf(previousCitation.outerHTML) : 0;
+            const currCitationIndex = botMessage.innerHTML.indexOf(e.target.outerHTML);
+            // Replace oldText with textToUpdate after all highlights have been added
+            let oldText = botMessage.innerHTML.substring(prevCitationIndex, currCitationIndex);
+            let textToUpdate = botMessage.innerHTML.substring(prevCitationIndex, currCitationIndex);
+
+            for (const clause of clauses) {
                 const colorIndex = Math.floor(Math.random() * highlightColors.length);
                 const color = highlightColors[colorIndex];
                 let matches = [];
@@ -278,11 +290,10 @@ function addCitationHandlers(citedClauses, botMessageIndex) {
             
                 // Sort matches by length (desc) to prioritize longer matches in case of overlap
                 matches.sort((a, b) => b.length - a.length);
-            
                 // Track highlighted regions in the clause
                 const highlightedRegions = new Array(clause.clause.length).fill(false);
 
-                matches.forEach(match => {
+                for (const match of matches) {
                     let isOverlap = false;
                     
                     // Check for overlap in the highlighted regions
@@ -292,46 +303,48 @@ function addCitationHandlers(citedClauses, botMessageIndex) {
                             break;
                         }
                     }
+
+                    if (isOverlap)
+                        continue;
             
                     // If no overlap, proceed to highlight
-                    if (!isOverlap) {
-                        for (let i = match.startIndex; i < match.endIndex; i++) {
-                            highlightedRegions[i] = true;
-                        }
-
-                        // Highlight clause in response
-                        const botMessage = document.querySelector(`#bot-message-${botMessageIndex}`);
-                        botMessage.innerHTML = botMessage.innerHTML.replace(
-                            match.text,
-                            `<span class="active-highlight" 
-                                style="background-color:${color}; cursor: pointer;" 
-                                onclick="scrollToHighlight(document.querySelector('#match-${match.startIndex}')); 
-                                        return false;">
-                                ${match.text}
-                            </span>`
-                        );
-
-                        // Highlight in source or summary as applicable
-                        if (match.isSummary) {
-                            const summaryElement = sourceCard.querySelector(`.ai-summary`);
-                            const srcIndex = sourceSummary.toLowerCase().indexOf(match.text.toLowerCase());
-                            const srcLcs = sourceSummary.substring(srcIndex, srcIndex + match.text.length);
-                            summaryElement.innerHTML = summaryElement.innerHTML.replace(
-                                srcLcs,
-                                `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
-                            );
-                        } else {
-                            const excerptElement = sourceCard.querySelector(`.list-group-item:nth-child(${match.entityIndex + 1}) div`);
-                            const srcIndex = sourceEntities[match.entityIndex].text.toLowerCase().indexOf(match.text.toLowerCase());
-                            const srcLcs = sourceEntities[match.entityIndex].text.substring(srcIndex, srcIndex + match.text.length);
-                            excerptElement.innerHTML = excerptElement.innerHTML.replace(
-                                srcLcs,
-                                `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
-                            );
-                        }
+                    for (let i = match.startIndex; i < match.endIndex; i++) {
+                        highlightedRegions[i] = true;
                     }
-                });
-            });
+
+                    textToUpdate = textToUpdate.replace(
+                        match.text,
+                        `<span class="active-highlight" 
+                            style="background-color:${color}; cursor: pointer;" 
+                            onclick="scrollToHighlight(document.querySelector('#match-${match.startIndex}')); 
+                                    return false;">
+                            ${match.text}
+                        </span>`
+                    );
+
+                    // Highlight in source or summary as applicable
+                    if (match.isSummary) {
+                        const summaryElement = sourceCard.querySelector(`.ai-summary`);
+                        const srcIndex = sourceSummary.toLowerCase().indexOf(match.text.toLowerCase());
+                        const srcLcs = sourceSummary.substring(srcIndex, srcIndex + match.text.length);
+                        summaryElement.innerHTML = summaryElement.innerHTML.replace(
+                            srcLcs,
+                            `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
+                        );
+                    } else {
+                        const excerptElement = sourceCard.querySelector(`.list-group-item:nth-child(${match.entityIndex + 1}) div`);
+                        const srcIndex = sourceEntities[match.entityIndex].text.toLowerCase().indexOf(match.text.toLowerCase());
+                        const srcLcs = sourceEntities[match.entityIndex].text.substring(srcIndex, srcIndex + match.text.length);
+                        excerptElement.innerHTML = excerptElement.innerHTML.replace(
+                            srcLcs,
+                            `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
+                        );
+                    }
+                }
+            }
+
+            // Highlight clause in response
+            botMessage.innerHTML = botMessage.innerHTML.replace(oldText, textToUpdate);
 
             setTimeout(() => {
                 const firstHighlight = sourceCard.querySelector('.active-highlight');
