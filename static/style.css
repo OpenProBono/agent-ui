@@ -93,40 +93,6 @@ body, html {
 .icon:hover {
     color: #0056b3;
 }
-.file-upload {
-    margin-bottom: 15px;
-}
-.file-list {
-    margin-top: 10px;
-}
-.file-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 5px;
-}
-.file-thumbnails {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-}
-.file-thumbnail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 60px;
-}
-.file-thumbnail i {
-    font-size: 2rem;
-    margin-bottom: 5px;
-}
-.file-thumbnail span {
-    font-size: 0.8rem;
-    text-align: center;
-    word-break: break-all;
-    max-width: 100%;
-}
 .disclaimer {
     background-color: #f0f0f0;
     padding: 20px;

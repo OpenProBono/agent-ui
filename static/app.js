@@ -1,71 +1,11 @@
 function acceptDisclaimer() {
     document.querySelector('.disclaimer').style.display = 'none';
     document.querySelector('.chat-container').style.display = 'block';
-    document.querySelector('.file-upload').style.display = 'block';
     document.querySelector('.input-group').style.display = 'flex';
 }
 
 function declineDisclaimer() {
     alert('You must accept the disclaimer to use OpenProBono AI.');
-}
-
-let uploadedFiles = [];
-
-function handleFileUpload(files) {
-    const fileList = document.getElementById('file-list');
-    fileList.innerHTML = '';
-
-    for (let i = 0; i < files.length && uploadedFiles.length < 5; i++) {
-        const file = files[i];
-        if (file.size <= 5 * 1024 * 1024) { // 5MB in bytes
-            uploadedFiles.push(file);
-            const fileItem = document.createElement('div');
-            fileItem.className = 'file-item';
-            fileItem.innerHTML = `
-                <span>${file.name}</span>
-                <button class="btn btn-sm btn-danger" onclick="removeFile(${uploadedFiles.length - 1})">Remove</button>
-            `;
-            fileList.appendChild(fileItem);
-        } else {
-            alert(`File ${file.name} is larger than 5MB and won't be uploaded.`);
-        }
-    }
-
-    if (files.length > 5) {
-        alert('Maximum of 5 files allowed. Only the first 5 files have been added.');
-    }
-
-    document.getElementById('file-input').value = '';
-}
-
-function removeFile(index) {
-    uploadedFiles.splice(index, 1);
-    updateFileList();
-}
-
-function updateFileList() {
-    const fileList = document.getElementById('file-list');
-    fileList.innerHTML = '';
-    uploadedFiles.forEach((file, index) => {
-        const fileItem = document.createElement('div');
-        fileItem.className = 'file-item';
-        fileItem.innerHTML = `
-            <span>${file.name}</span>
-            <button class="btn btn-sm btn-danger" onclick="removeFile(${index})">Remove</button>
-        `;
-        fileList.appendChild(fileItem);
-    });
-}
-
-function getFileIcon(fileName) {
-    const extension = fileName.split('.').pop().toLowerCase();
-    switch (extension) {
-        case 'txt': return 'bi-file-text';
-        case 'doc':
-        case 'docx': return 'bi-file-word';
-        case 'pdf': return 'bi-file-pdf';
-        default: return 'bi-file-earmark';
-    }
 }
 
 let feedbackAction = '';
@@ -409,17 +349,14 @@ async function sendMessage() {
     }
 
     const userInput = document.getElementById('user-input');
-    if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
+    if (userInput.value.trim() === '') return;
 
     // Add user message
     addMessageToChat('user', userInput.value);
 
-    // Clear input and file list
+    // Clear input
     const userMessage = userInput.value;
-    const userFiles = uploadedFiles;
     userInput.value = '';
-    uploadedFiles = [];
-    updateFileList();
 
     if (eventSource) {
         eventSource.close();
@@ -428,20 +365,6 @@ async function sendMessage() {
     try {
         if (!currentSessionId) {
             await getNewSession(botId);
-        }
-        // Only use FormData if we have files
-        if (userFiles.length > 0) {
-            const formData = new FormData();
-            formData.append('sessionId', currentSessionId);
-            userFiles.forEach((file) => {
-                formData.append('files', file);
-            });
-
-            const response = await fetch('/chat', {
-                method: 'POST',
-                body: formData
-            });
-            if (!response.ok) throw new Error('Failed to upload files');
         }
         // Prepare stream args
         const params = new URLSearchParams({
@@ -541,19 +464,6 @@ function addMessageToChat(type, content) {
     const chatMessages = document.getElementById('chat-messages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';            
-    if (uploadedFiles.length > 0) {
-        content += '<div class="file-thumbnails">';
-        uploadedFiles.forEach(file => {
-            const icon = getFileIcon(file.name);
-            content += `
-                <div class="file-thumbnail">
-                    <i class="bi ${icon}"></i>
-                    <span>${file.name}</span>
-                </div>
-            `;
-        });
-        content += '</div>';
-    }
     messageDiv.innerHTML = `<div class="${type}-message">${content}</div>`;
     chatMessages.appendChild(messageDiv);
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -702,16 +612,6 @@ function generateSourceHTML(source, index, entities) {
                         ${aiSummary}
                         ${entitiesHTML}
                     </div>
-                </div>
-            `;
-            break;
-        case 'file':
-            // Modify the excerpt part to include multiple excerpts
-            entitiesHTML = entities.map(entity => `<p class="card-text">${entity.text}</p>`).join('');
-            html = `
-                <div class="card-body">
-                    <h5 class="card-title">${index + 1}. ${source.id}</h5>
-                    ${entitiesHTML}
                 </div>
             `;
             break;
