@@ -959,23 +959,6 @@ document.getElementById('user-input').addEventListener('keypress', function (e) 
     }
 });
 
-// Dependent provider and model dropdowns
-document.getElementById('provider').addEventListener('click', function () {
-    let provider = this.value;
-    let models = document.getElementById("model");
-    if (provider === "openai") {
-        models.innerHTML = `
-            <option selected value="gpt-4o-mini">GPT-4o mini</option>
-            <option value="gpt-4o">GPT-4o</option>
-        `;
-    } else if (provider === "anthropic") {
-        models.innerHTML = `
-            <option selected value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-            <option value=claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
-        `;
-    }
-});
-
 // Dynamic size for user input textarea
 document.getElementById('user-input').addEventListener('input', function() {
     this.style.height = 'auto'; // Reset height to auto so height will be recalculated
