@@ -83,19 +83,208 @@ function formatDate(dateString) {
     return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
 }
 
-async function processCitations(text, botMessageIndex) {
-    // Get the clause-to-citation mapping
-    const response = await fetch('/get_cited_clauses', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ text })
+function parseInTextCitations(text) {
+    /**
+     * Parse a text with in-text citations and return a list of objects.
+     *
+     * @param {string} text - Input text containing in-text citations.
+     * @returns {Array} - A list of objects with `text` and `citations` keys.
+     */
+
+    // Regex to match citations like [1], [2][3], etc.
+    const citationPattern = /\[(\d+(?:\]\[\d+)*)\]/;
+
+    // Split the text based on citations
+    const segments = text.split(citationPattern);
+
+    // Track citation instances
+    const citationInstances = {};
+
+    const result = [];
+
+    segments.forEach((segment, i) => {
+        if (i % 2 === 0) {
+            // Even indices are text without citations
+            if (segment.trim()) {
+                result.push({ text: segment, citations: [] });
+            }
+        } else {
+            // Odd indices are citation groups (e.g., "1", "2][3")
+            const citations = segment.split("][").map((citation) => {
+                const citationNumber = parseInt(citation, 10);
+                citationInstances[citationNumber] = (citationInstances[citationNumber] || 0) + 1;
+                return {
+                    number: citationNumber,
+                    instance: citationInstances[citationNumber],
+                };
+            });
+
+            // Attach citations to the previous text segment
+            if (result.length > 0) {
+                result[result.length - 1].citations.push(...citations);
+            }
+        }
     });
-    const citationMapping = await response.json();
-    if (citationMapping.message === "Failure")
-        return;
-    
+
+    // Remove trailing text without citations if it exists
+    if (result.length > 0 && result[result.length - 1].citations.length === 0) {
+        result.pop();
+    }
+
+    return result;
+}
+
+function addCitationHighlights(e) {
+    let highlightColors = [
+        "#FFFF99", "#FFDD99", "#FFCC99", "#FFB6B6", "#FFD700", "#B3FF99", "#99FFFF", "#99CCFF", "#B6A8FF", "#FF99CC", 
+        "#FFC299", "#FFEB99", "#FFFA99", "#FFD2A6", "#FFF5B7", "#FFF8DC", "#F9E1A7", "#F8C8DC", "#F6C3A4", "#F5B7B1", 
+        "#DFFF00", "#F4A300", "#BFFF00", "#00FFFF", "#80FF00", "#A8D5BA", "#FAD02E", "#F4C7B6", "#F9B5B0", "#FCF76E", 
+        "#FF8364", "#F0C27B", "#D1B7A1", "#B8F2E6", "#FFD1DC", "#FF89B0", "#D7E4F1", "#CCFFCC", "#E6D8AD", "#F1E1DC", 
+        "#A9E9B9", "#A1C6EA", "#FF8A5C", "#9FD5D1", "#E5A3E5", "#FF92A3", "#FFD39B", "#FF5C8D", "#FFE4B5", "#F3D7C1"
+    ];
+
+    if (e.target.classList.contains('citation-link')) {
+        const citationNum = parseInt(e.target.dataset.citation);
+        const instance = parseInt(e.target.dataset.instance);
+        const botMsgIndex = parseInt(e.target.dataset.botmsgindex);
+        const citationMapping = parseInTextCitations(botMessageTexts[botMsgIndex]);
+        
+        // Find the substrings for this citation
+        let substrings = citationMapping.filter(citedSubstring =>
+            citedSubstring.citations.find(citation =>
+                citation.number == citationNum && citation.instance == instance
+            )
+        );
+
+        // Expand source
+        const sourceCard = document.getElementById(`card-${citationNum}`);
+        const collapseIcon = sourceCard.querySelector('#collapseIcon' + citationNum);
+        if (collapseIcon.classList.contains('bi-chevron-up')) {
+            // Expand the content
+            collapseIcon.classList.replace('bi-chevron-up', 'bi-chevron-down');
+            sourceCard.querySelector('#collapseContent' + citationNum).style.display = '';
+        }
+
+        // Gather source entities and summary for processing
+        const source = Array.from(sourceMap.values()).find(src => src.originalIndex === citationNum - 1);
+        const sourceEntities = source.entities;
+        const sourceSummary = source.entities[0].metadata.ai_summary;
+
+        const botMessage = document.querySelector(`#bot-message-${botMsgIndex}`);
+        // Get all the citation elements inside botMessage
+        const citationElements = Array.from(botMessage.querySelectorAll('.citation-link'));
+        // Find the part of the response that corresponds to the citation
+        let currentCitationIndex = citationElements.indexOf(e.target);
+        let previousCitation = currentCitationIndex > 0 ? citationElements[currentCitationIndex - 1] : null;
+        while (previousCitation && previousCitation.nextElementSibling === e.target) {
+            currentCitationIndex--;
+            previousCitation = currentCitationIndex > 0 ? citationElements[currentCitationIndex - 1] : null;
+        }
+        const prevCitationIndex = previousCitation ? botMessage.innerHTML.indexOf(previousCitation.outerHTML) : 0;
+        const currCitationIndex = botMessage.innerHTML.indexOf(e.target.outerHTML);
+        // Replace oldText with textToUpdate after all highlights have been added
+        let oldText = botMessage.innerHTML.substring(prevCitationIndex, currCitationIndex);
+        let textToUpdate = botMessage.innerHTML.substring(prevCitationIndex, currCitationIndex);
+
+        for (const substring of substrings) {
+            let matches = [];
+        
+            sourceEntities.forEach((entity, index) => {
+                // Find disjoint longest common substrings and store their position in the substring
+                const disjointLCSs = longestDisjointCommonSubstrings(substring.text, entity.text)
+                    .filter(lcs => lcs.trim().indexOf(' ') > -1 && isWholeWordSubstring(lcs.trim(), substring.text, entity.text))
+                    .map(lcs => {
+                        lcs = lcs.trim();
+                        const startIndex = substring.text.toLowerCase().indexOf(lcs.toLowerCase());
+                        return { text: lcs, length: lcs.length, startIndex, endIndex: startIndex + lcs.length, entityIndex: index };
+                    });
+                
+                matches.push(...disjointLCSs);
+            });
+        
+            if (sourceSummary) {
+                const disjointLCSs = longestDisjointCommonSubstrings(substring.text, sourceSummary)
+                    .filter(lcs => lcs.trim().indexOf(' ') > -1 && isWholeWordSubstring(lcs.trim(), substring.text, sourceSummary))
+                    .map(lcs => {
+                        lcs = lcs.trim();
+                        const startIndex = substring.text.toLowerCase().indexOf(lcs.toLowerCase());
+                        return { text: lcs, length: lcs.length, startIndex, endIndex: startIndex + lcs.length, isSummary: true};
+                    });
+                
+                matches.push(...disjointLCSs);
+            }
+        
+            // Sort matches by length (desc) to prioritize longer matches in case of overlap
+            matches.sort((a, b) => b.length - a.length);
+            // Track highlighted regions in the substring
+            const highlightedRegions = new Array(substring.text.length).fill(false);
+
+            for (const match of matches) {
+                let isOverlap = false;
+                
+                // Check for overlap in the highlighted regions
+                for (let i = match.startIndex; i < match.endIndex; i++) {
+                    if (highlightedRegions[i]) {
+                        isOverlap = true;
+                        break;
+                    }
+                }
+
+                if (isOverlap)
+                    continue;
+
+                // If no overlap, proceed to highlight
+                for (let i = match.startIndex; i < match.endIndex; i++) {
+                    highlightedRegions[i] = true;
+                }
+
+                const colorIndex = Math.floor(Math.random() * highlightColors.length);
+                const color = highlightColors[colorIndex];
+
+                textToUpdate = textToUpdate.replace(
+                    match.text,
+                    `<span class="active-highlight" 
+                        style="background-color:${color}; cursor: pointer;" 
+                        onclick="scrollToHighlight(document.querySelector('#match-${match.startIndex}')); 
+                                return false;">
+                        ${match.text}
+                    </span>`
+                );
+
+                // Highlight in source or summary as applicable
+                if (match.isSummary) {
+                    const summaryElement = sourceCard.querySelector(`.ai-summary`);
+                    const srcIndex = sourceSummary.toLowerCase().indexOf(match.text.toLowerCase());
+                    const srcLcs = sourceSummary.substring(srcIndex, srcIndex + match.text.length);
+                    summaryElement.innerHTML = summaryElement.innerHTML.replace(
+                        srcLcs,
+                        `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
+                    );
+                } else {
+                    const excerptElement = sourceCard.querySelector(`.list-group-item:nth-child(${match.entityIndex + 1}) div`);
+                    const srcIndex = sourceEntities[match.entityIndex].text.toLowerCase().indexOf(match.text.toLowerCase());
+                    const srcLcs = sourceEntities[match.entityIndex].text.substring(srcIndex, srcIndex + match.text.length);
+                    excerptElement.innerHTML = excerptElement.innerHTML.replace(
+                        srcLcs,
+                        `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
+                    );
+                }
+            }
+        }
+
+        // Highlight substring in response
+        botMessage.innerHTML = botMessage.innerHTML.replace(oldText, textToUpdate);
+
+        setTimeout(() => {
+            const firstHighlight = sourceCard.querySelector('.active-highlight');
+            if (firstHighlight) {
+                scrollToHighlight(firstHighlight);
+            }
+        }, 100); // Small delay to allow highlights to be created
+    }
+}
+
+function processCitations() {
     // Get the bot message container
     const botMessage = document.querySelector(`#bot-message-${botMessageIndex}`);
     // Remove fade in class to add citation links without animation
@@ -118,11 +307,13 @@ async function processCitations(text, botMessageIndex) {
         const instance = instanceCounters.get(citationNum);
         return `<span class="citation-link" 
                      data-citation="${citationNum}" 
-                     data-instance="${instance}">[${citationNum}]</span>`;
+                     data-instance="${instance}"
+                     data-botmsgindex="${botMessageIndex}">[${citationNum}]</span>`;
     });
 
     botMessage.innerHTML = htmlContent;
-    addCitationHandlers(citationMapping.cited_clauses, botMessageIndex);
+    document.querySelector("#chat-messages").removeEventListener("click", addCitationHighlights);
+    document.querySelector("#chat-messages").addEventListener("click", addCitationHighlights);
 }
 
 function longestDisjointCommonSubstrings(s1, s2) {
@@ -206,156 +397,6 @@ function scrollToHighlight(element) {
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function addCitationHandlers(citedClauses, botMessageIndex) {
-    let highlightColors = [
-        "#FFFF99", "#FFDD99", "#FFCC99", "#FFB6B6", "#FFD700", "#B3FF99", "#99FFFF", "#99CCFF", "#B6A8FF", "#FF99CC", 
-        "#FFC299", "#FFEB99", "#FFFA99", "#FFD2A6", "#FFF5B7", "#FFF8DC", "#F9E1A7", "#F8C8DC", "#F6C3A4", "#F5B7B1", 
-        "#DFFF00", "#F4A300", "#BFFF00", "#00FFFF", "#80FF00", "#A8D5BA", "#FAD02E", "#F4C7B6", "#F9B5B0", "#FCF76E", 
-        "#FF8364", "#F0C27B", "#D1B7A1", "#B8F2E6", "#FFD1DC", "#FF89B0", "#D7E4F1", "#CCFFCC", "#E6D8AD", "#F1E1DC", 
-        "#A9E9B9", "#A1C6EA", "#FF8A5C", "#9FD5D1", "#E5A3E5", "#FF92A3", "#FFD39B", "#FF5C8D", "#FFE4B5", "#F3D7C1"
-    ];
-
-    document.querySelector("#chat-messages").addEventListener("click", (e) => {
-        if (e.target.classList.contains('citation-link')) {
-            // Remove any existing highlights
-            // document.querySelectorAll('.active-highlight').forEach(el => 
-            //     el.classList.remove('active-highlight'));
-            
-            const citationNum = parseInt(e.target.dataset.citation);
-            const instance = parseInt(e.target.dataset.instance);
-            
-            // Find the clauses for this citation
-            let clauses = citedClauses.filter(citedClause =>
-                citedClause.citations.find(citation =>
-                    citation.number == citationNum && citation.instance == instance
-                )
-            );
-
-            // Expand source
-            const sourceCard = document.getElementById(`card-${citationNum}`);
-            const collapseIcon = sourceCard.querySelector('#collapseIcon' + citationNum);
-            if (collapseIcon.classList.contains('bi-chevron-up')) {
-                // Expand the content
-                collapseIcon.classList.replace('bi-chevron-up', 'bi-chevron-down');
-                sourceCard.querySelector('#collapseContent' + citationNum).style.display = '';
-            }
-
-            // Gather source entities and summary for processing
-            const source = Array.from(sourceMap.values()).find(src => src.originalIndex === citationNum - 1);
-            const sourceEntities = source.entities;
-            const sourceSummary = source.entities[0].metadata.ai_summary;
-
-            const botMessage = document.querySelector(`#bot-message-${botMessageIndex}`);
-            // Get all the citation elements inside botMessage
-            const citationElements = Array.from(botMessage.querySelectorAll('.citation-link'));
-            // Find the part of the response that corresponds to the citation
-            const currentCitationIndex = citationElements.indexOf(e.target);
-            const previousCitation = currentCitationIndex > 0 ? citationElements[currentCitationIndex - 1] : null;
-            const prevCitationIndex = previousCitation ? botMessage.innerHTML.indexOf(previousCitation.outerHTML) : 0;
-            const currCitationIndex = botMessage.innerHTML.indexOf(e.target.outerHTML);
-            // Replace oldText with textToUpdate after all highlights have been added
-            let oldText = botMessage.innerHTML.substring(prevCitationIndex, currCitationIndex);
-            let textToUpdate = botMessage.innerHTML.substring(prevCitationIndex, currCitationIndex);
-
-            for (const clause of clauses) {
-                const colorIndex = Math.floor(Math.random() * highlightColors.length);
-                const color = highlightColors[colorIndex];
-                let matches = [];
-            
-                sourceEntities.forEach((entity, index) => {
-                    const sourceText = entity.text;                    
-                    // Find disjoint longest common substrings and store their position in the clause
-                    const disjointLCSs = longestDisjointCommonSubstrings(clause.clause, sourceText)
-                        .filter(lcs => lcs.trim().indexOf(' ') > -1 && isWholeWordSubstring(lcs.trim(), clause.clause, sourceText))
-                        .map(lcs => {
-                            lcs = lcs.trim();
-                            const startIndex = clause.clause.toLowerCase().indexOf(lcs.toLowerCase());
-                            return { text: lcs, length: lcs.length, startIndex, endIndex: startIndex + lcs.length, entityIndex: index };
-                        });
-                    
-                    matches.push(...disjointLCSs);
-                });
-            
-                if (sourceSummary) {
-                    const disjointLCSs = longestDisjointCommonSubstrings(clause.clause, sourceSummary)
-                        .filter(lcs => lcs.trim().indexOf(' ') > -1 && isWholeWordSubstring(lcs.trim(), clause.clause, sourceSummary))
-                        .map(lcs => {
-                            lcs = lcs.trim();
-                            const startIndex = clause.clause.toLowerCase().indexOf(lcs.toLowerCase());
-                            return { text: lcs, length: lcs.length, startIndex, endIndex: startIndex + lcs.length, isSummary: true};
-                        });
-                    
-                    matches.push(...disjointLCSs);
-                }
-            
-                // Sort matches by length (desc) to prioritize longer matches in case of overlap
-                matches.sort((a, b) => b.length - a.length);
-                // Track highlighted regions in the clause
-                const highlightedRegions = new Array(clause.clause.length).fill(false);
-
-                for (const match of matches) {
-                    let isOverlap = false;
-                    
-                    // Check for overlap in the highlighted regions
-                    for (let i = match.startIndex; i < match.endIndex; i++) {
-                        if (highlightedRegions[i]) {
-                            isOverlap = true;
-                            break;
-                        }
-                    }
-
-                    if (isOverlap)
-                        continue;
-            
-                    // If no overlap, proceed to highlight
-                    for (let i = match.startIndex; i < match.endIndex; i++) {
-                        highlightedRegions[i] = true;
-                    }
-
-                    textToUpdate = textToUpdate.replace(
-                        match.text,
-                        `<span class="active-highlight" 
-                            style="background-color:${color}; cursor: pointer;" 
-                            onclick="scrollToHighlight(document.querySelector('#match-${match.startIndex}')); 
-                                    return false;">
-                            ${match.text}
-                        </span>`
-                    );
-
-                    // Highlight in source or summary as applicable
-                    if (match.isSummary) {
-                        const summaryElement = sourceCard.querySelector(`.ai-summary`);
-                        const srcIndex = sourceSummary.toLowerCase().indexOf(match.text.toLowerCase());
-                        const srcLcs = sourceSummary.substring(srcIndex, srcIndex + match.text.length);
-                        summaryElement.innerHTML = summaryElement.innerHTML.replace(
-                            srcLcs,
-                            `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
-                        );
-                    } else {
-                        const excerptElement = sourceCard.querySelector(`.list-group-item:nth-child(${match.entityIndex + 1}) div`);
-                        const srcIndex = sourceEntities[match.entityIndex].text.toLowerCase().indexOf(match.text.toLowerCase());
-                        const srcLcs = sourceEntities[match.entityIndex].text.substring(srcIndex, srcIndex + match.text.length);
-                        excerptElement.innerHTML = excerptElement.innerHTML.replace(
-                            srcLcs,
-                            `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
-                        );
-                    }
-                }
-            }
-
-            // Highlight clause in response
-            botMessage.innerHTML = botMessage.innerHTML.replace(oldText, textToUpdate);
-
-            setTimeout(() => {
-                const firstHighlight = sourceCard.querySelector('.active-highlight');
-                if (firstHighlight) {
-                    scrollToHighlight(firstHighlight);
-                }
-            }, 100); // Small delay to allow highlights to be created
-        }
-    });
-}
-
 let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
@@ -424,9 +465,10 @@ async function sendMessage() {
 }
 
 let botMessageContainer = null;
-let rawBotMessageContent = '';
-let botMessageIndex = 1;
-async function handleStreamEvent(data) {
+let botMessageText = '';
+let botMessageIndex = 0;
+let botMessageTexts = [];
+function handleStreamEvent(data) {
     switch(data.type) {
         case 'user':
             addMessageToChat(data.type, data.content);
@@ -456,10 +498,10 @@ async function handleStreamEvent(data) {
                 // Append it to the chatbox
                 const chatMessages = document.getElementById('chat-messages');
                 chatMessages.appendChild(botMessageContainer);
-                rawBotMessageContent = '';
+                botMessageText = '';
             }
             let content = data.content;
-            rawBotMessageContent += data.content;
+            botMessageText += data.content;
             const html = marked.parse(content);
             let tempContainer = document.createElement('div');
             tempContainer.innerHTML = html;
@@ -476,13 +518,15 @@ async function handleStreamEvent(data) {
             if (eventSource) {
                 eventSource.close();
             }
-            await processCitations(rawBotMessageContent, botMessageIndex);
+            // Append text to array for citation highlight event handlers
+            botMessageTexts.push(botMessageText);
+            processCitations();
             botMessageContainer = null;
             botMessageIndex++;
             let sessions = loadSavedSessions();
             // If it's a new session, get the title/timestamp and add it to local storage
             if (!sessions.find(session => session.id == currentSessionId))
-                await saveCurrentSession();
+                saveCurrentSession();
             break;
         default:
             console.warn('Unknown event type:', data.type);
@@ -775,7 +819,8 @@ async function switchSession(sessionId) {
 
     // Update current session
     currentSessionId = sessionId;
-    botMessageIndex = 1;
+    botMessageIndex = 0;
+    botMessageTexts = [];
 
     // Retrieve bot from local storage
     let sessions = loadSavedSessions();
@@ -795,7 +840,7 @@ async function switchSession(sessionId) {
         if (response.ok) {
             const messages = await response.json();
             for (const msg of messages.history) {
-                await handleStreamEvent(msg);
+                handleStreamEvent(msg);
             }
         }
     } catch (error) {
@@ -929,6 +974,12 @@ document.getElementById('provider').addEventListener('click', function () {
             <option value=claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
         `;
     }
+});
+
+// Dynamic size for user input textarea
+document.getElementById('user-input').addEventListener('input', function() {
+    this.style.height = 'auto'; // Reset height to auto so height will be recalculated
+    this.style.height = (this.scrollHeight) + 'px'; // Set new height based on content
 });
 
 // Initialize everything when page loads
