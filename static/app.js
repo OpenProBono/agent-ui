@@ -400,9 +400,9 @@ function scrollToHighlight(element) {
 let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
-    // Get bot from the URL (assuming it's a URL parameter like ?bot=xyz)
-    const urlParams = new URLSearchParams(window.location.search);
-    const botId = urlParams.get('bot');
+    // Extract the bot parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const botId = pathParts[2];  // Assuming the URL is in the form /bot/<bot>
     if (!botId) {
         alert('No bot ID provided in URL.');
         return;
@@ -410,6 +410,10 @@ async function sendMessage() {
 
     const userInput = document.getElementById('user-input');
     if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
+    
+    // Hide chatbox placeholder text
+    const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+    placeholderChat.style.display = 'none';
 
     // Add user message
     addMessageToChat('user', userInput.value);
@@ -479,6 +483,13 @@ function handleStreamEvent(data) {
             <p><strong>Arguments:</strong> ${data.args}</p>
             <p><i>The tool is gathering sources<span id="${data.id}-dots" class="dots"></span></i></p>`;
             addMessageToChat('tool', toolContent);
+            if (botMessageContainer) {
+                // Append text to array for citation highlight event handlers
+                botMessageTexts.push(botMessageText);
+                processCitations();
+                botMessageContainer = null;
+                botMessageIndex++;
+            }
             break;
         case 'tool_result':
             updateSources(data.results);
@@ -740,6 +751,9 @@ let sourceMap = new Map(); // To keep track of sources and their excerpts
 function updateSources(newSources) {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = ''; // Clear previous sources
+    // Hide sources placeholder text
+    const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
+    placeholderSource.style.display = 'none';
     newSources.forEach((source, i) => {
         if (sourceMap.has(source.id)) {
             let existingEntities = sourceMap.get(source.id).entities;
@@ -785,12 +799,12 @@ function updateSources(newSources) {
 
 async function getNewSession(botId) {
     try {
-        const response = await fetch(`/new_session/${botId}`);
+        const response = await fetch(`/bot/${botId}/new_session`);
         if (response.ok) {
             const data = await response.json();
             currentSessionId = data.session_id;
             // Update URL without reloading page, adding session ID to URL
-            window.history.pushState({}, '', `?bot=${botId}&session=${currentSessionId}`);
+            window.history.pushState({}, '', `/bot/${botId}/session/${currentSessionId}`);
         }
     } catch (error) {
         console.error('Failed to create new session:', error);
@@ -806,6 +820,12 @@ function clearSessionMessages() {
     // Clear current source list HTML
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = '';
+    // Display placeholder texts
+    const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
+    placeholderSource.style.display = 'block';
+    const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+    placeholderChat.style.display = 'block';
+
 }
 
 async function switchSession(sessionId) {
@@ -832,13 +852,16 @@ async function switchSession(sessionId) {
     }
 
     // Update URL
-    window.history.pushState({}, '', `?bot=${currentBotId}&session=${sessionId}`);
+    window.history.pushState({}, '', `/bot/${currentBotId}/session/${sessionId}`);
 
     // Get messages
     try {
         const response = await fetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
             const messages = await response.json();
+            // Hide chatbox placeholder texts
+            const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+            placeholderChat.style.display = 'none';
             for (const msg of messages.history) {
                 handleStreamEvent(msg);
             }
@@ -852,15 +875,15 @@ async function switchSession(sessionId) {
 function clearSession() {
     clearSessionMessages();
 
-    // Retrieve bot from the URL to preserve it
-    const urlParams = new URLSearchParams(window.location.search);
-    const botId = urlParams.get('bot');
+    // Extract the bot parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const botId = pathParts[2];  // Assuming the URL is in the form /bot/<bot>
 
     // Update URL to remove session ID but retain bot
     if (botId) {
-        window.history.pushState({}, '', `?bot=${botId}`);
+        window.history.pushState({}, '', `/bot/${botId}`);
     } else {
-        window.history.pushState({}, '', window.location.pathname);
+        console.error('Unable to retrieve bot ID.');
     }
 
     // Clear session ID variable
@@ -985,9 +1008,9 @@ document.getElementById('user-input').addEventListener('input', function() {
 // Initialize everything when page loads
 document.addEventListener('DOMContentLoaded', async function() {
     displaySessionsSidebar();
-    // Check URL for session ID
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session');
+    // Extract the session parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const sessionId = pathParts[4];  // Assuming the URL is in the form /bot/<bot>/session/<session>
 
     if (sessionId) {
         // Load existing session

@@ -23,8 +23,10 @@ def api_request_stream(endpoint, data=None):
     return requests.post(url, headers=HEADERS, json=data, stream=True)
 
 
-@app.route("/", methods=["GET"])
-def index():
+@app.route("/bot/<bot>", methods=["GET"])
+@app.route("/bot/<bot>/", methods=["GET"])
+@app.route("/bot/<bot>/session/<session>", methods=["GET"])
+def chatbot(bot, session=None):
     return render_template("index.html")
 
 
@@ -79,7 +81,7 @@ def chat():
         return Response(generate(), mimetype="text/event-stream")
 
 
-@app.route("/new_session/<bot>", methods=["GET"])
+@app.route("/bot/<bot>/new_session", methods=["GET"])
 def new_session(bot):
     try:
         with api_request("initialize_session", data={"bot_id": bot}) as r:
@@ -119,17 +121,5 @@ def get_session_messages(session_id):
             r.raise_for_status()
             session_data = r.json()
             return jsonify(session_data)
-    except Exception as e:
-        return jsonify({"error": f"Failed to fetch messages: {e}"}), 400
-
-
-@app.route("/get_cited_clauses", methods=["POST"])
-def get_cited_clauses():
-    try:
-        message = request.get_json()["text"]
-        data = {"message": message}
-        with api_request("get_cited_clauses", data=data) as r:
-            r.raise_for_status()
-            return r.json()
     except Exception as e:
         return jsonify({"error": f"Failed to fetch messages: {e}"}), 400
