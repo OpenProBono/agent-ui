@@ -825,16 +825,15 @@ function clearSessionMessages() {
     placeholderSource.style.display = 'block';
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
     placeholderChat.style.display = 'block';
-
+    // Update highlighted session
+    if (currentSessionId) {
+        document.getElementById(currentSessionId).classList.remove('active-session');
+    }
 }
 
 async function switchSession(sessionId) {
     clearSessionMessages();
 
-    // Update highlighted session
-    if (currentSessionId) {
-        document.getElementById(currentSessionId).classList.remove('active-session');
-    }
     document.getElementById(sessionId).classList.add('active-session');
 
     // Update current session
