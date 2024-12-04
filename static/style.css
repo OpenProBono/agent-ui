@@ -212,15 +212,10 @@ body, html {
     overflow: hidden; /* Ensures no scrollbars are visible */
 }
 #user-input {
-    resize: none; /* Prevents manual resizing, you can remove this line if you want to allow manual resizing */
-}
-/* Functionality for auto-resizing textarea */
-#user-input {
-    min-height: 30px; /* Set a minimum height so it doesn't start too small */
-    transition: height 0.2s ease-out;
-}
-#user-input:focus, #user-input:invalid {
-    outline: none; /* Removes default focus and invalid borders in some browsers */
+    min-height: 36px; /* Set a minimum height */
+    resize: none; /* Prevent manual resizing by the user */
+    overflow: hidden; /* Hide the scrollbar */
+    box-sizing: border-box; /* Include padding and border in height/width calculations */
 }
 .placeholder-text {
     position: absolute;

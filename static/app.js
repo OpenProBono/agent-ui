@@ -410,7 +410,7 @@ async function sendMessage() {
 
     const userInput = document.getElementById('user-input');
     if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
-    
+
     // Hide chatbox placeholder text
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
     placeholderChat.style.display = 'none';
@@ -422,6 +422,8 @@ async function sendMessage() {
     const userMessage = userInput.value;
     const userFiles = uploadedFiles;
     userInput.value = '';
+    userInput.style.height = 'auto'; // Reset height to auto so height will be recalculated
+    userInput.style.height = (this.scrollHeight) + 'px'; // Set new height based on content
     uploadedFiles = [];
     updateFileList();
 
@@ -1008,6 +1010,7 @@ function addSessionToSidebar(session) {
 // Allow sending message with Enter key
 document.getElementById('user-input').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
+        e.preventDefault();
         sendMessage();
     }
 });
