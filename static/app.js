@@ -853,6 +853,37 @@ async function switchSession(sessionId) {
     // Update URL
     window.history.pushState({}, '', `/bot/${currentBotId}/session/${sessionId}`);
 
+    // Get bot info
+    try {
+        const response = await fetch(`/bot/${currentBotId}/info`);
+        if (response.ok) {
+            const result = await response.json();
+            const provider = document.getElementById('provider');
+            const model = document.getElementById('model');
+            const tools = document.getElementById('tools');
+            if (result.data.chat_model.engine === "openai") {
+                provider.innerHTML = '<strong>Provider:</strong> OpenAI';
+                model.innerHTML = `<strong>Model:</strong>
+                    ${result.data.chat_model.model == "gpt-4o" ? "GPT-4o" : "GPT-4o mini"}`;
+            } else {
+                provider.innerHTML = '<strong>Provider:</strong> Anthropic';
+                model.innerHTML = `
+                    <strong>Model:</strong>
+                    ${result.data.chat_model.model == "claude-3-5-sonnet-latest" ? "Claude 3.5 Sonnet" : "Claude 3.5 Haiku"}`;
+            }
+            tools.innerHTML = '';
+            for (const tool of result.data.search_tools) {
+                tools.innerHTML += `<li>${tool.name}</li>`;
+            }
+            for (const tool of result.data.vdb_tools) {
+                tools.innerHTML += `<li>${tool.name}</li>`;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load agent:', error);
+        addMessageToChat('error', 'Failed to load agent');
+    }
+
     // Get messages
     try {
         const response = await fetch(`/get_session_messages/${sessionId}`);
@@ -978,23 +1009,6 @@ function addSessionToSidebar(session) {
 document.getElementById('user-input').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
         sendMessage();
-    }
-});
-
-// Dependent provider and model dropdowns
-document.getElementById('provider').addEventListener('click', function () {
-    let provider = this.value;
-    let models = document.getElementById("model");
-    if (provider === "openai") {
-        models.innerHTML = `
-            <option selected value="gpt-4o-mini">GPT-4o mini</option>
-            <option value="gpt-4o">GPT-4o</option>
-        `;
-    } else if (provider === "anthropic") {
-        models.innerHTML = `
-            <option selected value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-            <option value=claude-3-5-sonnet-20240620">Claude 3.5 Sonnet</option>
-        `;
     }
 });
 

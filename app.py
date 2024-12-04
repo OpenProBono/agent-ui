@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template, Response
+from flask import abort, Flask, jsonify, request, render_template, Response
 from json import dumps
 import requests
 import os
@@ -27,7 +27,26 @@ def api_request_stream(endpoint, data=None):
 @app.route("/bot/<bot>/", methods=["GET"])
 @app.route("/bot/<bot>/session/<session>", methods=["GET"])
 def chatbot(bot, session=None):
-    return render_template("index.html")
+    data = {"bot_id": bot}
+    try:
+        with api_request("view_bot", data=data, method="GET") as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception as e:
+        return jsonify({"error": f"Failed to load agent: {e}"}), 400
+    if result["data"] is None:
+        abort(404)
+    engine, model = None, None
+    if "chat_model" in result["data"]:
+        engine = result["data"]["chat_model"]["engine"]
+        model = result["data"]["chat_model"]["model"]
+    search_tools = []
+    if "search_tools" in result["data"]:
+        search_tools = result["data"]["search_tools"]
+    vdb_tools = []
+    if "vdb_tools" in result["data"]:
+        vdb_tools = result["data"]["vdb_tools"]
+    return render_template("index.html", engine=engine, model=model, search_tools=search_tools, vdb_tools=vdb_tools)
 
 
 @app.route("/chat", methods=["GET", "POST"])
@@ -90,6 +109,19 @@ def new_session(bot):
     except Exception as e:
         return jsonify({"error": f"Failed to create session: {e}"}), 400
 
+
+@app.route("/bot/<bot>/info", methods=["GET"])
+def bot_info(bot):
+    data = {"bot_id": bot}
+    try:
+        with api_request("view_bot", data=data, method="GET") as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception as e:
+        return jsonify({"error": f"Failed to load agent: {e}"}), 400
+    if result["data"] is None:
+        abort(404)
+    return jsonify(result)
 
 @app.route("/sessions", methods=["GET"])
 def get_sessions():
