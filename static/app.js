@@ -1053,7 +1053,7 @@ function displaySessionsSidebar() {
             <div class="time-label">${period.replace('_', ' ')}</div>
             <ul class="list-unstyled">
                 ${sessions.map(session => `
-                    <li id="${session.id}" class="conversation-item">
+                    <li id="session-${session.id}" class="conversation-item">
                         <a href="#" class="text-decoration-none text-truncate d-block" 
                             onclick="switchSession('${session.id}'); return false;">
                             ${session.title}
@@ -1075,8 +1075,8 @@ function addSessionToSidebar(session) {
     } else {
         const sessionListEntry = document.createElement('li');
         sessionListEntry.className = "conversation-item";
-        sessionListEntry.id = session.id;
-        sessionListEntry.innerHTML = `<a id="session-${session.id}" href="#" class="text-decoration-none text-truncate d-block" 
+        sessionListEntry.id = `session-${session.id}`;
+        sessionListEntry.innerHTML = `<a href="#" class="text-decoration-none text-truncate d-block" 
             onclick="switchSession('${session.id}'); return false;">
             ${session.title}
         </a>`;
