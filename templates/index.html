@@ -18,8 +18,33 @@
                 <i class="bi bi-pencil-square icon h4" title="New Conversation" onclick="clearSession()"></i>
             </div>
 
+            <h3 class="mb-3">Agent Info</h3>
+            <div class="mb-2">
+                <div class="mb-1" id="provider">
+                    <strong>Provider:</strong>
+                    {{ engine }}
+                </div>                
+            </div>
+            <div class="mb-2">
+                <div class="mb-1" id="model">
+                    <strong>Model:</strong>
+                    {{ model }}
+                </div>
+            </div>
+            <div class="mb-2">
+                <div class="mb-1"><strong>Available Tools:</strong></div>
+                <ul id="tools">
+                    {% for tool in search_tools %}
+                        <li>{{ tool.name }}</li>
+                    {% endfor %}
+                    {% for tool in vdb_tools %}
+                        <li>{{ tool.name }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
             <div class="conversation-history mt-4">
-                <h4 class="mb-3">Conversations</h4>
+                <h3 class="mb-3">Conversations</h3>
                 <div id="sessionsList"></div>
             </div>
         </div>
@@ -45,6 +70,11 @@
             </div>
             <div class="chat-container rounded p-3" style="display:none;">
                 <div id="chat-messages"></div>
+                <div class="placeholder-text">OpenProBono AI</div>
+            </div>
+            <div class="file-upload" style="display:none;">
+                <input type="file" id="file-input" class="form-control" multiple accept=".txt,.doc,.docx,.pdf" onchange="handleFileUpload(this.files)">
+                <div id="file-list" class="file-list"></div>
             </div>
             <div class="input-group mb-3" style="display:none;">
                 <textarea id="user-input" class="form-control" placeholder="Type your message..." rows="1"></textarea>
@@ -57,7 +87,7 @@
                 <h3>Sources</h3>
                 <i class="bi bi-layout-text-sidebar icon h4" title="Toggle Right Sidebar"></i>
             </div>
-
+            <div class="placeholder-text">No sources retrieved.</div>
             <div id="source-list" class="source-list">
                 <!-- Sources will be dynamically added here -->
             </div>

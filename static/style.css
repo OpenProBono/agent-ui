@@ -27,6 +27,7 @@ body, html {
     border-left: 2px solid #737373;
     overflow-y: auto;
     transition: width 0.3s ease, padding 0.3s ease;
+    position: relative; /* Needed for centering the placeholder */
 }
 .content {
     flex: 1;
@@ -41,27 +42,30 @@ body, html {
     margin-bottom: 20px;
     border: 2px solid #737373;
     background-color: #f0f0f0;
+    position: relative; /* Needed for centering the placeholder */
 }
 .message {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 .user-message {
     background-color: #5c28df;
     color: white;
     border-radius: 10px 10px 0 10px;
     padding: 10px;
-    max-width: 70%;
     margin-left: auto;
+    width: fit-content; 
+    max-width: 70%;
 }
 .bot-message-container {
     display: flex;
     flex-direction: column;
-    max-width: 70%;
 }
 .bot-message {
     background-color: #f8fcfd;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    width: fit-content;
+    max-width: 70%;
 }
 @keyframes fadeIn {
     from {opacity: 0}
@@ -74,11 +78,14 @@ body, html {
     background-color: #ff999c;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    width: fit-content;
+    max-width: 70%;
 }
 .tool-message {
     background-color: #00c9d2;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    width: fit-content;
     max-width: 70%;
 }
 .message-icons {
@@ -92,6 +99,40 @@ body, html {
 }
 .icon:hover {
     color: #0056b3;
+}
+.file-upload {
+    margin-bottom: 15px;
+}
+.file-list {
+    margin-top: 10px;
+}
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+.file-thumbnails {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+.file-thumbnail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 60px;
+}
+.file-thumbnail i {
+    font-size: 2rem;
+    margin-bottom: 5px;
+}
+.file-thumbnail span {
+    font-size: 0.8rem;
+    text-align: center;
+    word-break: break-all;
+    max-width: 100%;
 }
 .disclaimer {
     background-color: #f0f0f0;
@@ -119,6 +160,10 @@ body, html {
     75% {
         content: "...";
     }
+}
+.conversation-history {
+    border-top: 1px solid #dee2e6;
+    padding-top: 1rem;
 }
 .time-label {
     font-size: 0.75rem;
@@ -172,13 +217,18 @@ body, html {
     overflow: hidden; /* Ensures no scrollbars are visible */
 }
 #user-input {
-    resize: none; /* Prevents manual resizing, you can remove this line if you want to allow manual resizing */
+    min-height: 36px; /* Set a minimum height */
+    resize: none; /* Prevent manual resizing by the user */
+    overflow: hidden; /* Hide the scrollbar */
+    box-sizing: border-box; /* Include padding and border in height/width calculations */
 }
-/* Functionality for auto-resizing textarea */
-#user-input {
-    min-height: 30px; /* Set a minimum height so it doesn't start too small */
-    transition: height 0.2s ease-out;
-}
-#user-input:focus, #user-input:invalid {
-    outline: none; /* Removes default focus and invalid borders in some browsers */
+.placeholder-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #a3a3a3;
+    font-size: 1.2em;
+    text-align: center;
+    pointer-events: none; /* Ensure it doesn't block clicks */
 }

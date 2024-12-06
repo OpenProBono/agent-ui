@@ -1,11 +1,71 @@
 function acceptDisclaimer() {
     document.querySelector('.disclaimer').style.display = 'none';
     document.querySelector('.chat-container').style.display = 'block';
+    document.querySelector('.file-upload').style.display = 'block';
     document.querySelector('.input-group').style.display = 'flex';
 }
 
 function declineDisclaimer() {
     alert('You must accept the disclaimer to use OpenProBono AI.');
+}
+
+let uploadedFiles = [];
+
+function handleFileUpload(files) {
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '';
+
+    for (let i = 0; i < files.length && uploadedFiles.length < 5; i++) {
+        const file = files[i];
+        if (file.size <= 5 * 1024 * 1024) { // 5MB in bytes
+            uploadedFiles.push(file);
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <span>${file.name}</span>
+                <button class="btn btn-sm btn-danger" onclick="removeFile(${uploadedFiles.length - 1})">Remove</button>
+            `;
+            fileList.appendChild(fileItem);
+        } else {
+            alert(`File ${file.name} is larger than 5MB and won't be uploaded.`);
+        }
+    }
+
+    if (files.length > 5) {
+        alert('Maximum of 5 files allowed. Only the first 5 files have been added.');
+    }
+
+    document.getElementById('file-input').value = '';
+}
+
+function removeFile(index) {
+    uploadedFiles.splice(index, 1);
+    updateFileList();
+}
+
+function updateFileList() {
+    const fileList = document.getElementById('file-list');
+    fileList.innerHTML = '';
+    uploadedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+            <span>${file.name}</span>
+            <button class="btn btn-sm btn-danger" onclick="removeFile(${index})">Remove</button>
+        `;
+        fileList.appendChild(fileItem);
+    });
+}
+
+function getFileIcon(fileName) {
+    const extension = fileName.split('.').pop().toLowerCase();
+    switch (extension) {
+        case 'txt': return 'bi-file-text';
+        case 'doc':
+        case 'docx': return 'bi-file-word';
+        case 'pdf': return 'bi-file-pdf';
+        default: return 'bi-file-earmark';
+    }
 }
 
 let feedbackAction = '';
@@ -21,6 +81,20 @@ function formatDate(dateString) {
         'July', 'August', 'September', 'October', 'November', 'December'
     ];
     return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
+}
+
+function getFirebaseDate() {
+    const date = new Date();
+    const pad = (num, size = 2) => String(num).padStart(size, '0');
+    const year = date.getUTCFullYear();
+    const month = pad(date.getUTCMonth() + 1);
+    const day = pad(date.getUTCDate());
+    const hours = pad(date.getUTCHours());
+    const minutes = pad(date.getUTCMinutes());
+    const seconds = pad(date.getUTCSeconds());
+    const milliseconds = pad(date.getUTCMilliseconds(), 3);
+    const microseconds = '000'; // JavaScript does not provide microsecond precision
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}${microseconds}+00:00`;
 }
 
 function parseInTextCitations(text) {
@@ -340,23 +414,32 @@ function scrollToHighlight(element) {
 let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
-    // Get bot from the URL (assuming it's a URL parameter like ?bot=xyz)
-    const urlParams = new URLSearchParams(window.location.search);
-    const botId = urlParams.get('bot');
+    // Extract the bot parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const botId = pathParts[2];  // Assuming the URL is in the form /bot/<bot>
     if (!botId) {
         alert('No bot ID provided in URL.');
         return;
     }
 
     const userInput = document.getElementById('user-input');
-    if (userInput.value.trim() === '') return;
+    if (userInput.value.trim() === '' && uploadedFiles.length === 0) return;
+
+    // Hide chatbox placeholder text
+    const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+    placeholderChat.style.display = 'none';
 
     // Add user message
     addMessageToChat('user', userInput.value);
 
-    // Clear input
+    // Clear input and file list
     const userMessage = userInput.value;
+    const userFiles = uploadedFiles;
     userInput.value = '';
+    userInput.style.height = 'auto'; // Reset height to auto so height will be recalculated
+    userInput.style.height = (this.scrollHeight) + 'px'; // Set new height based on content
+    uploadedFiles = [];
+    updateFileList();
 
     if (eventSource) {
         eventSource.close();
@@ -366,6 +449,39 @@ async function sendMessage() {
         if (!currentSessionId) {
             await getNewSession(botId);
         }
+        let sessions = loadSavedSessions();
+        // If it's a new session, add it to local storage
+        if (!sessions.find(session => session.id == currentSessionId)) {
+            const newSession = {"title": "New Chat", "lastModified": getFirebaseDate(), "id": currentSessionId};
+            sessions.push(newSession);
+            saveSessions(sessions);
+            addSessionToSidebar(newSession);
+        }
+        // Only use FormData if we have files
+        if (userFiles.length > 0) {
+            const formData = new FormData();
+            formData.append('sessionId', currentSessionId);
+            userFiles.forEach((file) => {
+                formData.append('files', file);
+                handleStreamEvent({"type": "file", "id": file.name})
+            });
+
+            const response = await fetch('/chat', {
+                method: 'POST',
+                body: formData
+            });
+            if (!response.ok) throw new Error('Failed to upload files');
+            const uploadResult = await response.json();
+            uploadResult.results.forEach((result) => {
+                let streamEvent = {
+                    "type": "file_upload_result",
+                    "id": result.id,
+                    "status": result.message,
+                }
+                handleStreamEvent(streamEvent);
+            });
+        }
+        if (!userMessage) return;
         // Prepare stream args
         const params = new URLSearchParams({
             sessionId: currentSessionId,
@@ -396,12 +512,35 @@ function handleStreamEvent(data) {
         case 'user':
             addMessageToChat(data.type, data.content);
             break;
+        case 'file':
+            // Add file upload message
+            addMessageToChat(
+                'tool',
+                `<p class="mb-0" id="${data.id}-msg"><i>Uploading ${data.id}<span id="${data.id}-dots" class="dots"></span></i></p>`
+            );
+            break;
+        case 'file_upload_result':
+            let fileDots = document.getElementById(`${data.id}-dots`);
+            fileDots.classList.remove('dots');
+            if (data.status === "Success") {
+                fileDots.innerHTML = '...finished.';
+            } else {
+                fileDots.innerHTML = '...failed.';
+            }
+            break;
         case 'tool_call':
             let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
             <p><strong>Arguments:</strong> ${data.args}</p>
             <p><i>The tool is gathering sources<span id="${data.id}-dots" class="dots"></span></i></p>`;
             addMessageToChat('tool', toolContent);
+            if (botMessageContainer) {
+                // Append text to array for citation highlight event handlers
+                botMessageTexts.push(botMessageText);
+                processCitations();
+                botMessageContainer = null;
+                botMessageIndex++;
+            }
             break;
         case 'tool_result':
             updateSources(data.results);
@@ -441,15 +580,18 @@ function handleStreamEvent(data) {
             if (eventSource) {
                 eventSource.close();
             }
-            // Append text to array for citation highlight event handlers
-            botMessageTexts.push(botMessageText);
-            processCitations();
-            botMessageContainer = null;
-            botMessageIndex++;
+            if (botMessageContainer) {
+                // Append text to array for citation highlight event handlers
+                botMessageTexts.push(botMessageText);
+                processCitations();
+                botMessageContainer = null;
+                botMessageIndex++;
+            }
             let sessions = loadSavedSessions();
-            // If it's a new session, get the title/timestamp and add it to local storage
-            if (!sessions.find(session => session.id == currentSessionId))
-                saveCurrentSession();
+            // Get the title if it's a new session
+            if (sessions.some((session) => session.id === currentSessionId && session.title === "New Chat")) {
+                getCurrentSessionTitle();
+            }
             break;
         default:
             console.warn('Unknown event type:', data.type);
@@ -464,6 +606,19 @@ function addMessageToChat(type, content) {
     const chatMessages = document.getElementById('chat-messages');
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';            
+    if (uploadedFiles.length > 0) {
+        content += '<div class="file-thumbnails">';
+        uploadedFiles.forEach(file => {
+            const icon = getFileIcon(file.name);
+            content += `
+                <div class="file-thumbnail">
+                    <i class="bi ${icon}"></i>
+                    <span>${file.name}</span>
+                </div>
+            `;
+        });
+        content += '</div>';
+    }
     messageDiv.innerHTML = `<div class="${type}-message">${content}</div>`;
     chatMessages.appendChild(messageDiv);
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -533,10 +688,7 @@ function generateSourceHTML(source, index, entities) {
             entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-briefcase-fill" viewBox="0 0 25 25">
-                        <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H1.5A1.5 1.5 0 0 0 0 4.5v1.384l7.614 2.03a1.5 1.5 0 0 0 .772 0L16 5.884V4.5A1.5 1.5 0 0 0 14.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5"/>
-                        <path d="M0 12.5A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6.85L8.129 8.947a.5.5 0 0 1-.258 0L0 6.85z"/>
-                    </svg>
+                    <i class="fs-1 bi bi-briefcase-fill"></i>
                     <div style="flex: 1; margin: 0 15px;">
                         <h5>${index + 1}. ${source.entity.metadata.case_name}</h5>
                     </div>
@@ -615,6 +767,42 @@ function generateSourceHTML(source, index, entities) {
                 </div>
             `;
             break;
+        case 'file':
+            entitiesHTML = `
+                <div class="mt-2">
+                    <p class="card-text"><strong>Excerpt${entities.length > 1 ? 's' : ''} (${entities.length})</strong>:</p>
+                    <ol class="list-group">
+            `;
+            entitiesHTML += entities.map(entity => {
+                let formattedText = entity.text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/\n/g, '<br>')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                return `
+                    <li class="list-group-item">
+                        <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${formattedText}</div>
+                    </li>
+                `
+            }).join('');
+            entitiesHTML += '</ol></div>';
+            html = `
+                <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
+                    <i class="fs-1 ${getFileIcon(source.id)}-fill"></i>
+                    <div style="flex: 1; margin: 0 15px;">
+                        <h5>${index + 1}. ${source.id}</h5>
+                    </div>
+                    <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
+                </div>
+                <div id="collapseContent${index + 1}" style="display:none;">
+                    <div class="card-body">
+                        ${entitiesHTML}
+                    </div>
+                </div>
+            `;
+            break;
         case 'unknown':
             console.warn('Unknown source: ', source);
             html = `
@@ -640,6 +828,9 @@ let sourceMap = new Map(); // To keep track of sources and their excerpts
 function updateSources(newSources) {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = ''; // Clear previous sources
+    // Hide sources placeholder text
+    const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
+    placeholderSource.style.display = 'none';
     newSources.forEach((source, i) => {
         if (sourceMap.has(source.id)) {
             let existingEntities = sourceMap.get(source.id).entities;
@@ -685,12 +876,12 @@ function updateSources(newSources) {
 
 async function getNewSession(botId) {
     try {
-        const response = await fetch(`/new_session/${botId}`);
+        const response = await fetch(`/bot/${botId}/new_session`);
         if (response.ok) {
             const data = await response.json();
             currentSessionId = data.session_id;
             // Update URL without reloading page, adding session ID to URL
-            window.history.pushState({}, '', `?bot=${botId}&session=${currentSessionId}`);
+            window.history.pushState({}, '', `/bot/${botId}/session/${currentSessionId}`);
         }
     } catch (error) {
         console.error('Failed to create new session:', error);
@@ -706,15 +897,20 @@ function clearSessionMessages() {
     // Clear current source list HTML
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = '';
+    // Display placeholder texts
+    const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
+    placeholderSource.style.display = 'block';
+    const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+    placeholderChat.style.display = 'block';
+    // Update highlighted session
+    if (currentSessionId) {
+        document.getElementById(currentSessionId).classList.remove('active-session');
+    }
 }
 
 async function switchSession(sessionId) {
     clearSessionMessages();
 
-    // Update highlighted session
-    if (currentSessionId) {
-        document.getElementById(currentSessionId).classList.remove('active-session');
-    }
     document.getElementById(sessionId).classList.add('active-session');
 
     // Update current session
@@ -732,14 +928,45 @@ async function switchSession(sessionId) {
     }
 
     // Update URL
-    window.history.pushState({}, '', `?bot=${currentBotId}&session=${sessionId}`);
+    window.history.pushState({}, '', `/bot/${currentBotId}/session/${sessionId}`);
+
+    // Get bot info
+    try {
+        const response = await fetch(`/bot/${currentBotId}/info`);
+        if (response.ok) {
+            const result = await response.json();
+            const provider = document.getElementById('provider');
+            const model = document.getElementById('model');
+            const tools = document.getElementById('tools');
+            provider.innerHTML = `<strong>Provider:</strong> ${result.data.chat_model.engine}`;
+            model.innerHTML = `<strong>Model:</strong> ${result.data.chat_model.model}`;
+            tools.innerHTML = '';
+            for (const tool of result.data.search_tools) {
+                tools.innerHTML += `<li>${tool.name}</li>`;
+            }
+            for (const tool of result.data.vdb_tools) {
+                tools.innerHTML += `<li>${tool.name}</li>`;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load agent:', error);
+        addMessageToChat('error', 'Failed to load agent');
+    }
 
     // Get messages
     try {
         const response = await fetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
             const messages = await response.json();
+            // Hide chatbox placeholder texts
+            const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+            placeholderChat.style.display = 'none';
             for (const msg of messages.history) {
+                if (msg.type === "file") {
+                    uploadedFiles.push({name: msg.id});
+                    addMessageToChat("user", "");
+                    uploadedFiles = [];
+                }
                 handleStreamEvent(msg);
             }
         }
@@ -752,29 +979,34 @@ async function switchSession(sessionId) {
 function clearSession() {
     clearSessionMessages();
 
-    // Retrieve bot from the URL to preserve it
-    const urlParams = new URLSearchParams(window.location.search);
-    const botId = urlParams.get('bot');
+    // Extract the bot parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const botId = pathParts[2];  // Assuming the URL is in the form /bot/<bot>
 
     // Update URL to remove session ID but retain bot
     if (botId) {
-        window.history.pushState({}, '', `?bot=${botId}`);
+        window.history.pushState({}, '', `/bot/${botId}`);
     } else {
-        window.history.pushState({}, '', window.location.pathname);
+        console.error('Unable to retrieve bot ID.');
     }
 
     // Clear session ID variable
     currentSessionId = null;
 }
 
-async function saveCurrentSession() {
+async function getCurrentSessionTitle() {
     const response = await fetch(`/sessions?ids[]=${currentSessionId}`);
     if (!response.ok) throw new Error('Failed to get sessions from server');
     let fetchedSessions = await response.json();
     let savedSessions = loadSavedSessions();
-    let newSessions = savedSessions.concat(fetchedSessions);
-    saveSessions(newSessions);
-    addSessionToSidebar(fetchedSessions[0]);
+    // if savedSessions contains a session with id === fetchedSessions[0].id,
+    // then replace it with the fetched session
+    if (savedSessions.some((session) => session.id === fetchedSessions[0].id)) {
+        savedSessions[savedSessions.findIndex((session) => session.id === fetchedSessions[0].id)] = fetchedSessions[0];
+        saveSessions(savedSessions);
+        // update title in sidebar
+        document.querySelector(`#${currentSessionId} a`).innerText = fetchedSessions[0].title;
+    }
 }
 
 function loadSavedSessions() {
@@ -855,6 +1087,7 @@ function addSessionToSidebar(session) {
 // Allow sending message with Enter key
 document.getElementById('user-input').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
+        e.preventDefault();
         sendMessage();
     }
 });
@@ -868,9 +1101,9 @@ document.getElementById('user-input').addEventListener('input', function() {
 // Initialize everything when page loads
 document.addEventListener('DOMContentLoaded', async function() {
     displaySessionsSidebar();
-    // Check URL for session ID
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session');
+    // Extract the session parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const sessionId = pathParts[4];  // Assuming the URL is in the form /bot/<bot>/session/<session>
 
     if (sessionId) {
         // Load existing session
