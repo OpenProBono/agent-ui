@@ -6,7 +6,7 @@ import os
 
 app = Flask(__name__)
 
-API_URL = "http://0.0.0.0:8080"
+API_URL = os.environ["OPB_API_URL"]
 API_KEY = os.environ["OPB_TEST_API_KEY"]
 HEADERS = {"X-API-KEY": API_KEY}
 
