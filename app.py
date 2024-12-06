@@ -70,10 +70,11 @@ def chat():
                     params={"session_id": session_id},
                 ) as r:
                     r.raise_for_status()
+                    result = r.json()
             except Exception as e:
                 return jsonify({"error": f"Failed to upload files: {e}"}), 400
-
-        return jsonify({"message": "Success", "sessionId": session_id}), 200
+            return jsonify(result), 200
+        return jsonify({"error": "No files provided"}), 400
     else:
         session_id = request.args.get("sessionId")
         message = request.args.get("message")

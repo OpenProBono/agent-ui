@@ -45,25 +45,27 @@ body, html {
     position: relative; /* Needed for centering the placeholder */
 }
 .message {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 .user-message {
     background-color: #5c28df;
     color: white;
     border-radius: 10px 10px 0 10px;
     padding: 10px;
-    max-width: 70%;
     margin-left: auto;
+    width: fit-content; 
+    max-width: 70%;
 }
 .bot-message-container {
     display: flex;
     flex-direction: column;
-    max-width: 70%;
 }
 .bot-message {
     background-color: #f8fcfd;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    width: fit-content;
+    max-width: 70%;
 }
 @keyframes fadeIn {
     from {opacity: 0}
@@ -76,11 +78,14 @@ body, html {
     background-color: #ff999c;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    width: fit-content;
+    max-width: 70%;
 }
 .tool-message {
     background-color: #00c9d2;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
+    width: fit-content;
     max-width: 70%;
 }
 .message-icons {

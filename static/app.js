@@ -83,6 +83,20 @@ function formatDate(dateString) {
     return `${months[parseInt(month) - 1]} ${parseInt(day)}, ${year}`;
 }
 
+function getFirebaseDate() {
+    const date = new Date();
+    const pad = (num, size = 2) => String(num).padStart(size, '0');
+    const year = date.getUTCFullYear();
+    const month = pad(date.getUTCMonth() + 1);
+    const day = pad(date.getUTCDate());
+    const hours = pad(date.getUTCHours());
+    const minutes = pad(date.getUTCMinutes());
+    const seconds = pad(date.getUTCSeconds());
+    const milliseconds = pad(date.getUTCMilliseconds(), 3);
+    const microseconds = '000'; // JavaScript does not provide microsecond precision
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}${microseconds}+00:00`;
+}
+
 function parseInTextCitations(text) {
     /**
      * Parse a text with in-text citations and return a list of objects.
@@ -435,12 +449,21 @@ async function sendMessage() {
         if (!currentSessionId) {
             await getNewSession(botId);
         }
+        let sessions = loadSavedSessions();
+        // If it's a new session, add it to local storage
+        if (!sessions.find(session => session.id == currentSessionId)) {
+            const newSession = {"title": "New Chat", "lastModified": getFirebaseDate(), "id": currentSessionId};
+            sessions.push(newSession);
+            saveSessions(sessions);
+            addSessionToSidebar(newSession);
+        }
         // Only use FormData if we have files
         if (userFiles.length > 0) {
             const formData = new FormData();
             formData.append('sessionId', currentSessionId);
             userFiles.forEach((file) => {
                 formData.append('files', file);
+                handleStreamEvent({"type": "file", "id": file.name})
             });
 
             const response = await fetch('/chat', {
@@ -448,7 +471,17 @@ async function sendMessage() {
                 body: formData
             });
             if (!response.ok) throw new Error('Failed to upload files');
+            const uploadResult = await response.json();
+            uploadResult.results.forEach((result) => {
+                let streamEvent = {
+                    "type": "file_upload_result",
+                    "id": result.id,
+                    "status": result.message,
+                }
+                handleStreamEvent(streamEvent);
+            });
         }
+        if (!userMessage) return;
         // Prepare stream args
         const params = new URLSearchParams({
             sessionId: currentSessionId,
@@ -478,6 +511,22 @@ function handleStreamEvent(data) {
     switch(data.type) {
         case 'user':
             addMessageToChat(data.type, data.content);
+            break;
+        case 'file':
+            // Add file upload message
+            addMessageToChat(
+                'tool',
+                `<p class="mb-0" id="${data.id}-msg"><i>Uploading ${data.id}<span id="${data.id}-dots" class="dots"></span></i></p>`
+            );
+            break;
+        case 'file_upload_result':
+            let fileDots = document.getElementById(`${data.id}-dots`);
+            fileDots.classList.remove('dots');
+            if (data.status === "Success") {
+                fileDots.innerHTML = '...finished.';
+            } else {
+                fileDots.innerHTML = '...failed.';
+            }
             break;
         case 'tool_call':
             let toolContent = `<h5>Tool Call</h5>
@@ -531,15 +580,18 @@ function handleStreamEvent(data) {
             if (eventSource) {
                 eventSource.close();
             }
-            // Append text to array for citation highlight event handlers
-            botMessageTexts.push(botMessageText);
-            processCitations();
-            botMessageContainer = null;
-            botMessageIndex++;
+            if (botMessageContainer) {
+                // Append text to array for citation highlight event handlers
+                botMessageTexts.push(botMessageText);
+                processCitations();
+                botMessageContainer = null;
+                botMessageIndex++;
+            }
             let sessions = loadSavedSessions();
-            // If it's a new session, get the title/timestamp and add it to local storage
-            if (!sessions.find(session => session.id == currentSessionId))
-                saveCurrentSession();
+            // Get the title if it's a new session
+            if (sessions.some((session) => session.id === currentSessionId && session.title === "New Chat")) {
+                getCurrentSessionTitle();
+            }
             break;
         default:
             console.warn('Unknown event type:', data.type);
@@ -636,10 +688,7 @@ function generateSourceHTML(source, index, entities) {
             entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="currentColor" class="bi bi-briefcase-fill" viewBox="0 0 25 25">
-                        <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H1.5A1.5 1.5 0 0 0 0 4.5v1.384l7.614 2.03a1.5 1.5 0 0 0 .772 0L16 5.884V4.5A1.5 1.5 0 0 0 14.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5"/>
-                        <path d="M0 12.5A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6.85L8.129 8.947a.5.5 0 0 1-.258 0L0 6.85z"/>
-                    </svg>
+                    <i class="fs-1 bi bi-briefcase-fill"></i>
                     <div style="flex: 1; margin: 0 15px;">
                         <h5>${index + 1}. ${source.entity.metadata.case_name}</h5>
                     </div>
@@ -719,12 +768,38 @@ function generateSourceHTML(source, index, entities) {
             `;
             break;
         case 'file':
-            // Modify the excerpt part to include multiple excerpts
-            entitiesHTML = entities.map(entity => `<p class="card-text">${entity.text}</p>`).join('');
+            entitiesHTML = `
+                <div class="mt-2">
+                    <p class="card-text"><strong>Excerpt${entities.length > 1 ? 's' : ''} (${entities.length})</strong>:</p>
+                    <ol class="list-group">
+            `;
+            entitiesHTML += entities.map(entity => {
+                let formattedText = entity.text
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/\n/g, '<br>')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                return `
+                    <li class="list-group-item">
+                        <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">${formattedText}</div>
+                    </li>
+                `
+            }).join('');
+            entitiesHTML += '</ol></div>';
             html = `
-                <div class="card-body">
-                    <h5 class="card-title">${index + 1}. ${source.id}</h5>
-                    ${entitiesHTML}
+                <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
+                    <i class="fs-1 ${getFileIcon(source.id)}-fill"></i>
+                    <div style="flex: 1; margin: 0 15px;">
+                        <h5>${index + 1}. ${source.id}</h5>
+                    </div>
+                    <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
+                </div>
+                <div id="collapseContent${index + 1}" style="display:none;">
+                    <div class="card-body">
+                        ${entitiesHTML}
+                    </div>
                 </div>
             `;
             break;
@@ -863,16 +938,8 @@ async function switchSession(sessionId) {
             const provider = document.getElementById('provider');
             const model = document.getElementById('model');
             const tools = document.getElementById('tools');
-            if (result.data.chat_model.engine === "openai") {
-                provider.innerHTML = '<strong>Provider:</strong> OpenAI';
-                model.innerHTML = `<strong>Model:</strong>
-                    ${result.data.chat_model.model == "gpt-4o" ? "GPT-4o" : "GPT-4o mini"}`;
-            } else {
-                provider.innerHTML = '<strong>Provider:</strong> Anthropic';
-                model.innerHTML = `
-                    <strong>Model:</strong>
-                    ${result.data.chat_model.model == "claude-3-5-sonnet-latest" ? "Claude 3.5 Sonnet" : "Claude 3.5 Haiku"}`;
-            }
+            provider.innerHTML = `<strong>Provider:</strong> ${result.data.chat_model.engine}`;
+            model.innerHTML = `<strong>Model:</strong> ${result.data.chat_model.model}`;
             tools.innerHTML = '';
             for (const tool of result.data.search_tools) {
                 tools.innerHTML += `<li>${tool.name}</li>`;
@@ -895,6 +962,11 @@ async function switchSession(sessionId) {
             const placeholderChat = document.querySelector('.chat-container .placeholder-text');
             placeholderChat.style.display = 'none';
             for (const msg of messages.history) {
+                if (msg.type === "file") {
+                    uploadedFiles.push({name: msg.id});
+                    addMessageToChat("user", "");
+                    uploadedFiles = [];
+                }
                 handleStreamEvent(msg);
             }
         }
@@ -922,14 +994,19 @@ function clearSession() {
     currentSessionId = null;
 }
 
-async function saveCurrentSession() {
+async function getCurrentSessionTitle() {
     const response = await fetch(`/sessions?ids[]=${currentSessionId}`);
     if (!response.ok) throw new Error('Failed to get sessions from server');
     let fetchedSessions = await response.json();
     let savedSessions = loadSavedSessions();
-    let newSessions = savedSessions.concat(fetchedSessions);
-    saveSessions(newSessions);
-    addSessionToSidebar(fetchedSessions[0]);
+    // if savedSessions contains a session with id === fetchedSessions[0].id,
+    // then replace it with the fetched session
+    if (savedSessions.some((session) => session.id === fetchedSessions[0].id)) {
+        savedSessions[savedSessions.findIndex((session) => session.id === fetchedSessions[0].id)] = fetchedSessions[0];
+        saveSessions(savedSessions);
+        // update title in sidebar
+        document.querySelector(`#${currentSessionId} a`).innerText = fetchedSessions[0].title;
+    }
 }
 
 function loadSavedSessions() {

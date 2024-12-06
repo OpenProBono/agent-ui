@@ -19,24 +19,20 @@
             </div>
 
             <h3 class="mb-3">Agent Info</h3>
-            <div class="mb-3">
+            <div class="mb-2">
                 <div class="mb-1" id="provider">
                     <strong>Provider:</strong>
-                    {{ "OpenAI" if engine == "openai" else "Anthropic" }}
+                    {{ engine }}
                 </div>                
             </div>
-            <div class="mb-3">
+            <div class="mb-2">
                 <div class="mb-1" id="model">
                     <strong>Model:</strong>
-                    {% if engine == "openai" %}
-                        {{ "GPT-4o" if model == "gpt-4o" else "GPT-4o mini" }}
-                    {% elif engine == "anthropic" %}
-                        {{ "Claude 3.5 Sonnet" if model == "claude-3-5-sonnet-latest" else "Claude 3.5 Haiku" }}
-                    {% endif %}
+                    {{ model }}
                 </div>
             </div>
-            <div class="mb-3">
-                <div class="mb-1"><strong>Tools:</strong></div>
+            <div class="mb-2">
+                <div class="mb-1"><strong>Available Tools:</strong></div>
                 <ul id="tools">
                     {% for tool in search_tools %}
                         <li>{{ tool.name }}</li>
