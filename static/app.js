@@ -904,14 +904,14 @@ function clearSessionMessages() {
     placeholderChat.style.display = 'block';
     // Update highlighted session
     if (currentSessionId) {
-        document.getElementById(currentSessionId).classList.remove('active-session');
+        document.getElementById(`session-${currentSessionId}`).classList.remove('active-session');
     }
 }
 
 async function switchSession(sessionId) {
     clearSessionMessages();
 
-    document.getElementById(sessionId).classList.add('active-session');
+    document.getElementById(`session-${sessionId}`).classList.add('active-session');
 
     // Update current session
     currentSessionId = sessionId;
