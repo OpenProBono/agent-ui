@@ -1005,7 +1005,7 @@ async function getCurrentSessionTitle() {
         savedSessions[savedSessions.findIndex((session) => session.id === fetchedSessions[0].id)] = fetchedSessions[0];
         saveSessions(savedSessions);
         // update title in sidebar
-        document.querySelector(`#${currentSessionId} a`).innerText = fetchedSessions[0].title;
+        document.querySelector(`#session-${currentSessionId} a`).innerText = fetchedSessions[0].title;
     }
 }
 
@@ -1076,7 +1076,7 @@ function addSessionToSidebar(session) {
         const sessionListEntry = document.createElement('li');
         sessionListEntry.className = "conversation-item";
         sessionListEntry.id = session.id;
-        sessionListEntry.innerHTML = `<a id="${session.id}" href="#" class="text-decoration-none text-truncate d-block" 
+        sessionListEntry.innerHTML = `<a id="session-${session.id}" href="#" class="text-decoration-none text-truncate d-block" 
             onclick="switchSession('${session.id}'); return false;">
             ${session.title}
         </a>`;
