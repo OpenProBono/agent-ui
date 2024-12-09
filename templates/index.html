@@ -12,9 +12,9 @@
 </head>
 <body>
     <div class="wrapper">
-        <div class="sidebar" id="left-sidebar">
+        <div class="sidebar collapsed" id="left-sidebar">
             <div class="sidebar-header d-flex justify-content-between align-items-center mb-3">
-                <i class="bi bi-layout-text-sidebar-reverse icon h4" title="Toggle Left Sidebar"></i>
+                <i class="bi bi-layout-text-sidebar-reverse icon h4" title="Toggle Agent/Conversations"></i>
                 <i class="bi bi-pencil-square icon h4" title="New Conversation" onclick="clearSession()"></i>
             </div>
 
@@ -82,10 +82,10 @@
             </div>
         </div>
 
-        <div class="right-sidebar" id="right-sidebar">
+        <div class="right-sidebar collapsed" id="right-sidebar">
             <div class="sidebar-header d-flex justify-content-between align-items-center mb-4">
                 <h3>Sources</h3>
-                <i class="bi bi-layout-text-sidebar icon h4" title="Toggle Right Sidebar"></i>
+                <i class="bi bi-layout-text-sidebar icon h4" title="Toggle Sources"></i>
             </div>
             <div class="placeholder-text">No sources retrieved.</div>
             <div id="source-list" class="source-list">

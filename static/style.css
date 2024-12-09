@@ -40,8 +40,6 @@ body, html {
     flex: 1;
     overflow-y: auto;
     margin-bottom: 20px;
-    border: 2px solid #737373;
-    background-color: #f0f0f0;
     position: relative; /* Needed for centering the placeholder */
 }
 .message {
@@ -61,7 +59,8 @@ body, html {
     flex-direction: column;
 }
 .bot-message {
-    background-color: #f8fcfd;
+    background-color: #f0f0f0;
+    border: 2px solid #737373;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
     width: fit-content;
@@ -83,6 +82,7 @@ body, html {
 }
 .tool-message {
     background-color: #00c9d2;
+    border: 2px solid #737373;
     border-radius: 10px 10px 10px 0;
     padding: 10px;
     width: fit-content;
@@ -139,6 +139,7 @@ body, html {
     padding: 20px;
     border-radius: 10px;
     text-align: justify;
+    overflow: scroll;
 }
 .dots::after {
     display: inline-block;

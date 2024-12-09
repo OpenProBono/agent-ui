@@ -898,8 +898,10 @@ function clearSessionMessages() {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = '';
     // Display placeholder texts
-    const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
-    placeholderSource.style.display = 'block';
+    if (!document.getElementById("right-sidebar").classList.contains("collapsed")) {
+        const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
+        placeholderSource.style.display = 'block';
+    }
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
     placeholderChat.style.display = 'block';
     // Update highlighted session
