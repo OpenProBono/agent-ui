@@ -13,7 +13,7 @@ body, html {
     height: 100%;
 }
 .sidebar {
-    width: 225px;
+    width: 15%;
     padding: 20px;
     border-right: 2px solid #737373;
     overflow-y: auto;
@@ -21,13 +21,30 @@ body, html {
     transition: width 0.3s ease, padding 0.3s ease;
 }
 .right-sidebar {
-    width: 450px;
+    width: 30%;
     background-color: #f0f0f0;
     padding: 20px;
     border-left: 2px solid #737373;
     overflow-y: auto;
     transition: width 0.3s ease, padding 0.3s ease;
     position: relative; /* Needed for centering the placeholder */
+}
+/* Adjust width for the collapsed state */
+.sidebar.collapsed,
+.right-sidebar.collapsed {
+    width: 50px; /* Narrow width to keep icons visible */
+    padding: 10px;
+}
+/* Hide all elements except the toggle icon in collapsed state */
+.sidebar.collapsed *:not(.bi-layout-text-sidebar-reverse),
+.right-sidebar.collapsed *:not(.bi-layout-text-sidebar) {
+    display: none;
+}
+/* Center the toggle icon when sidebar is collapsed */
+.sidebar.collapsed .bi-layout-text-sidebar-reverse,
+.right-sidebar.collapsed .bi-layout-text-sidebar {
+    display: inline-block;
+    cursor: pointer;
 }
 .content {
     flex: 1;
@@ -139,7 +156,7 @@ body, html {
     padding: 20px;
     border-radius: 10px;
     text-align: justify;
-    overflow: scroll;
+    overflow-y: scroll;
 }
 .dots::after {
     display: inline-block;
@@ -186,24 +203,6 @@ body, html {
 .conversation-item a {
     color: #212529;
     font-size: 0.875rem;
-}
-/* Adjust width for the collapsed state */
-.sidebar.collapsed,
-.right-sidebar.collapsed {
-    width: 50px; /* Narrow width to keep icons visible */
-    padding: 10px;
-}
-/* Hide all elements except the toggle icon in collapsed state */
-.sidebar.collapsed *:not(.bi-layout-text-sidebar-reverse),
-.right-sidebar.collapsed *:not(.bi-layout-text-sidebar) {
-    display: none;
-}
-/* Center the toggle icon when sidebar is collapsed */
-.sidebar.collapsed .bi-layout-text-sidebar-reverse,
-.right-sidebar.collapsed .bi-layout-text-sidebar {
-    display: inline-block;
-    cursor: pointer;
-    margin-top: 0; /* Adjust to center vertically if needed */
 }
 .citation-link {
     color: blue;
