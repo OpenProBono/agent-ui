@@ -14,7 +14,6 @@
     <div class="wrapper">
         <div class="sidebar collapsed" id="left-sidebar">
             <div class="sidebar-header d-flex justify-content-between align-items-center mb-3">
-                <i class="bi bi-layout-text-sidebar-reverse icon h4" title="Toggle Agent/Conversations"></i>
                 <i class="bi bi-pencil-square icon h4" title="New Conversation" onclick="clearSession()"></i>
             </div>
 
@@ -50,6 +49,11 @@
         </div>
 
         <div class="content">
+            <div class="d-flex justify-content-between align-items-start">
+                <i class="bi bi-layout-text-sidebar-reverse icon h4" title="Toggle Agent/Conversations"></i>
+                <i class="bi bi-layout-text-sidebar icon h4" title="Toggle Sources"></i>
+            </div>
+
             <div class="disclaimer">
                 <h4 class="mb-3">Disclaimer</h4>
                 <p>OpenProBono AI is designed to assist users in finding relevant information and resources related to government and laws. While we strive to provide accurate and up-to-date information, our AI is not an attorney and does not provide legal advice. Users are urged to consult with legal professionals for specific legal matters.</p>
@@ -68,24 +72,25 @@
                     <button class="btn btn-secondary" onclick="declineDisclaimer()">Decline</button>
                 </div>
             </div>
-            <div class="chat-container rounded p-3" style="display:none;">
+            <div class="chat-container rounded p-3 d-none">
                 <div id="chat-messages"></div>
                 <div class="placeholder-text">OpenProBono AI</div>
             </div>
-            <div class="file-upload" style="display:none;">
+            <div class="file-upload d-none">
                 <input type="file" id="file-input" class="form-control" multiple accept=".txt,.doc,.docx,.pdf" onchange="handleFileUpload(this.files)">
                 <div id="file-list" class="file-list"></div>
             </div>
-            <div class="input-group mb-3" style="display:none;">
+            <div class="input-group mb-3 d-none">
                 <textarea id="user-input" class="form-control" placeholder="Type your message..." rows="1"></textarea>
-                <button class="btn btn-primary col-1" type="button" onclick="sendMessage()">Send</button>
+                <button class="btn btn-primary col-auto px-2" type="button" onclick="sendMessage()">
+                    <span class="bi-send-fill"></span>
+                </button>
             </div>
         </div>
 
         <div class="right-sidebar collapsed" id="right-sidebar">
             <div class="sidebar-header d-flex justify-content-between align-items-center mb-4">
                 <h3>Sources</h3>
-                <i class="bi bi-layout-text-sidebar icon h4" title="Toggle Sources"></i>
             </div>
             <div class="placeholder-text">No sources retrieved.</div>
             <div id="source-list" class="source-list">

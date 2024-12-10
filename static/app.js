@@ -1,8 +1,8 @@
 function acceptDisclaimer() {
-    document.querySelector('.disclaimer').style.display = 'none';
-    document.querySelector('.chat-container').style.display = 'block';
-    document.querySelector('.file-upload').style.display = 'block';
-    document.querySelector('.input-group').style.display = 'flex';
+    document.querySelector('.disclaimer').classList.add('d-none');
+    document.querySelector('.chat-container').classList.remove('d-none');
+    document.querySelector('.file-upload').classList.remove('d-none');
+    document.querySelector('.input-group').classList.replace('d-none', 'd-flex');
 }
 
 function declineDisclaimer() {

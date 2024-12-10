@@ -32,19 +32,11 @@ body, html {
 /* Adjust width for the collapsed state */
 .sidebar.collapsed,
 .right-sidebar.collapsed {
-    width: 50px; /* Narrow width to keep icons visible */
-    padding: 10px;
-}
-/* Hide all elements except the toggle icon in collapsed state */
-.sidebar.collapsed *:not(.bi-layout-text-sidebar-reverse),
-.right-sidebar.collapsed *:not(.bi-layout-text-sidebar) {
-    display: none;
-}
-/* Center the toggle icon when sidebar is collapsed */
-.sidebar.collapsed .bi-layout-text-sidebar-reverse,
-.right-sidebar.collapsed .bi-layout-text-sidebar {
-    display: inline-block;
-    cursor: pointer;
+    overflow: hidden;
+    width: 0px;
+    padding: 0;
+    margin: 0;
+    border: none;
 }
 .content {
     flex: 1;
@@ -61,6 +53,7 @@ body, html {
 }
 .message {
     margin-bottom: 10px;
+    word-wrap: break-word;
 }
 .user-message {
     background-color: #5c28df;
@@ -231,4 +224,9 @@ body, html {
     font-size: 1.2em;
     text-align: center;
     pointer-events: none; /* Ensure it doesn't block clicks */
+}
+@media (max-width: 767px) {
+    .sidebar, .right-sidebar {
+        width: 80%;
+    }
 }
