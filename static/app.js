@@ -529,9 +529,26 @@ function handleStreamEvent(data) {
             }
             break;
         case 'tool_call':
+            let argsDict = JSON.parse(data.args.replaceAll('\'', '"'));
             let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
-            <p><strong>Arguments:</strong> ${data.args}</p>
+            <p><strong>Arguments:</strong></p>
+            <table class="table table-info">
+                <thead>
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${Object.keys(argsDict).map(key => `
+                        <tr>
+                            <td>${key}</td>
+                            <td>${argsDict[key]}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
             <p><i>The tool is gathering sources<span id="${data.id}-dots" class="dots"></span></i></p>`;
             addMessageToChat('tool', toolContent);
             if (botMessageContainer) {
@@ -575,6 +592,12 @@ function handleStreamEvent(data) {
 
             let botMessageElement = botMessageContainer.querySelector('.bot-message');
             botMessageElement.appendChild(tempContainer);
+            break;
+        case 'error':
+            addMessageToChat('error', 'An error occurred while streaming the response.');
+            if (eventSource) {
+                eventSource.close();
+            }
             break;
         case 'done':
             if (eventSource) {
@@ -667,6 +690,10 @@ function generateSourceHTML(source, index, entities) {
             if (Object.hasOwn(source.entity.metadata, 'other_dates')) {
                 otherDates = `<p class="card-text"><strong>Other dates</strong>: ${source.entity.metadata.other_dates}</p>`;
             }
+            let caseName = source.entity.metadata.case_name;
+            if (caseName.length > 150) {
+                caseName = caseName.substring(0, 150) + '...';
+            }
             // Modify the excerpt part to include multiple excerpts
             entitiesHTML = `
                 <div class="mt-2">
@@ -688,9 +715,9 @@ function generateSourceHTML(source, index, entities) {
             entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
-                    <i class="fs-1 bi bi-briefcase-fill"></i>
+                    <i class="fs-2 bi bi-briefcase-fill"></i>
                     <div style="flex: 1; margin: 0 15px;">
-                        <h5>${index + 1}. ${source.entity.metadata.case_name}</h5>
+                        <h5>${index + 1}. ${caseName}</h5>
                     </div>
                     <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
                 </div>
@@ -710,20 +737,8 @@ function generateSourceHTML(source, index, entities) {
             break;
         case 'url':
             url = source.id;
-            let urlSource = 'Unknown Source';
-            if (Object.hasOwn(source.entity.metadata, 'source')) {
-                urlSource = source.entity.metadata.source;
-            }
-            let urlTitle = 'Unknown Title';
-            if (Object.hasOwn(source.entity.metadata, 'title')) {
-                urlTitle = source.entity.metadata.title;
-            }
-            let favicon = '';
-            if (Object.hasOwn(source.entity.metadata, 'favicon')) {
-                favicon = `<img src="${source.entity.metadata.favicon}" alt="${urlSource} favicon" style="width: 25px; height: 25px;">`;
-            } else {
-                favicon = `<div style="width:25px; min-width: 25px;"></div>`;
-            }
+            let urlSource = source.entity.metadata?.source ?? 'Unknown Source';
+            let urlTitle = source.entity.metadata?.title ?? 'Unknown Title';
             aiSummary = '';
             if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
                 mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
@@ -751,7 +766,7 @@ function generateSourceHTML(source, index, entities) {
             entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
-                    ${favicon}
+                    <i class="fs-2 bi bi-globe"></i>
                     <div style="flex: 1; margin: 0 15px;">
                         <h5>${index + 1}. ${urlSource}</h5>
                         <h6 class="card-subtitle mb-0">${urlTitle}</h6>
@@ -773,6 +788,13 @@ function generateSourceHTML(source, index, entities) {
                     <p class="card-text"><strong>Excerpt${entities.length > 1 ? 's' : ''} (${entities.length})</strong>:</p>
                     <ol class="list-group">
             `;
+            // comma separated unique list of page numbers from entities with that property
+            let pageNumbers = entities
+                .map(entity => entity.metadata.page_number)
+                .filter((value, index, self) => self.indexOf(value) === index);
+            let subtitleHTML = pageNumbers ? `
+                <h6 class="card-subtitle mb-0">Page${pageNumbers.length > 1 ? 's' : ''} ${pageNumbers.join(', ')}</h6>`
+                : '';
             entitiesHTML += entities.map(entity => {
                 let formattedText = entity.text
                     .replace(/&/g, '&amp;')
@@ -790,9 +812,10 @@ function generateSourceHTML(source, index, entities) {
             entitiesHTML += '</ol></div>';
             html = `
                 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger${index + 1}" style="cursor:pointer;">
-                    <i class="fs-1 ${getFileIcon(source.id)}-fill"></i>
+                    <i class="fs-2 ${getFileIcon(source.id)}-fill"></i>
                     <div style="flex: 1; margin: 0 15px;">
                         <h5>${index + 1}. ${source.id}</h5>
+                        ${subtitleHTML}
                     </div>
                     <i id="collapseIcon${index + 1}" class="bi bi-chevron-up"></i>
                 </div>
@@ -904,7 +927,7 @@ function clearSessionMessages() {
     }
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
     placeholderChat.style.display = 'block';
-    // Update highlighted session
+    // Remove old highlighted session
     if (currentSessionId) {
         document.getElementById(`session-${currentSessionId}`).classList.remove('active-session');
     }
@@ -913,6 +936,7 @@ function clearSessionMessages() {
 async function switchSession(sessionId) {
     clearSessionMessages();
 
+    // Add new highlighted session
     document.getElementById(`session-${sessionId}`).classList.add('active-session');
 
     // Update current session
