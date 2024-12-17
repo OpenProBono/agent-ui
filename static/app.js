@@ -955,7 +955,10 @@ function clearSessionMessages() {
     placeholderChat.style.display = 'block';
     // Remove old highlighted session
     if (currentSessionId) {
-        document.getElementById(`session-${currentSessionId}`).classList.remove('active-session');
+        const sessionSidebarEntry = document.getElementById(`session-${currentSessionId}`);
+        if (sessionSidebarEntry) {
+            sessionSidebarEntry.classList.remove('active-session');
+        }
     }
 }
 
