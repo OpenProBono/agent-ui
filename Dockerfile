@@ -10,10 +10,10 @@ COPY requirements.txt /api/requirements.txt
 
 RUN pip install -r requirements.txt
 
-COPY static /api/static
-
 COPY templates /api/templates
 
 COPY app.py /api/app.py
+
+COPY static /api/static
 
 CMD gunicorn -t 120 app:app

@@ -482,6 +482,13 @@ async function sendMessage() {
             });
         }
         if (!userMessage) return;
+
+        // Add message loader
+        addMessageToChat(
+            'bot',
+            `<p class="mb-0" id="msgLoader"><i>Thinking<span id="msgLoader-dots" class="dots"></span></i></p>`
+        );
+
         // Prepare stream args
         const params = new URLSearchParams({
             sessionId: currentSessionId,
@@ -495,6 +502,8 @@ async function sendMessage() {
         eventSource.onerror = function(error) {
             console.error('EventSource failed:', error);
             eventSource.close();
+            const loaderMsg = document.getElementById("msgLoader");
+            loaderMsg.parentElement.outerHTML = '';
             addMessageToChat('error', 'An error occurred while streaming the response.');
         };
     } catch (error) {
@@ -507,7 +516,16 @@ let botMessageContainer = null;
 let botMessageText = '';
 let botMessageIndex = 0;
 let botMessageTexts = [];
+function handleEndOfBotResponse() {
+    // Append text to array for citation highlight event handlers
+    botMessageTexts.push(botMessageText);
+    processCitations();
+    botMessageContainer = null;
+    botMessageIndex++;
+}
+
 function handleStreamEvent(data) {
+    const loaderMsg = document.getElementById("msgLoader");
     switch(data.type) {
         case 'user':
             addMessageToChat(data.type, data.content);
@@ -521,6 +539,10 @@ function handleStreamEvent(data) {
             break;
         case 'file_upload_result':
             let fileDots = document.getElementById(`${data.id}-dots`);
+            if (!fileDots) {
+                // Fetching old conversation so dots were never added, skip
+                break;
+            }
             fileDots.classList.remove('dots');
             if (data.status === "Success") {
                 fileDots.innerHTML = '...finished.';
@@ -529,6 +551,10 @@ function handleStreamEvent(data) {
             }
             break;
         case 'tool_call':
+            if (loaderMsg) {
+                // Clear 'Thinking...' message
+                loaderMsg.parentElement.outerHTML = '';
+            }
             let argsDict = JSON.parse(data.args.replaceAll('\'', '"'));
             let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
@@ -566,6 +592,10 @@ function handleStreamEvent(data) {
             toolDots.innerHTML = '...finished.';
             break;
         case 'response':
+            if (loaderMsg) {
+                // Clear 'Thinking...' message
+                loaderMsg.parentElement.outerHTML = '';
+            }
             if (!botMessageContainer) {
                 // It's the beginning of a bot message
                 // Create bot message container
@@ -604,11 +634,7 @@ function handleStreamEvent(data) {
                 eventSource.close();
             }
             if (botMessageContainer) {
-                // Append text to array for citation highlight event handlers
-                botMessageTexts.push(botMessageText);
-                processCitations();
-                botMessageContainer = null;
-                botMessageIndex++;
+                handleEndOfBotResponse();
             }
             let sessions = loadSavedSessions();
             // Get the title if it's a new session
@@ -936,6 +962,19 @@ function clearSessionMessages() {
 async function switchSession(sessionId) {
     clearSessionMessages();
 
+    // Add a status message in case there's an error loading the session
+    const statusMsg = document.getElementById("statusMsg");
+
+    // Retrieve session and bot from local storage
+    let sessions = loadSavedSessions();
+    let session = sessions.find(session => session.id === sessionId);
+    let currentBotId = session?.botId;
+
+    if (!currentBotId) {
+        statusMsg.innerHTML = "Failed to load session. Check the URL and try again.";
+        return;
+    }
+
     // Add new highlighted session
     document.getElementById(`session-${sessionId}`).classList.add('active-session');
 
@@ -943,15 +982,6 @@ async function switchSession(sessionId) {
     currentSessionId = sessionId;
     botMessageIndex = 0;
     botMessageTexts = [];
-
-    // Retrieve bot from local storage
-    let sessions = loadSavedSessions();
-    let session = sessions.find(session => session.id === currentSessionId);
-    let currentBotId = session.botId;
-
-    if (!currentBotId) {
-        console.error("Failed to find bot for session:", sessionId);
-    }
 
     // Update URL
     window.history.pushState({}, '', `/bot/${currentBotId}/session/${sessionId}`);
@@ -992,8 +1022,12 @@ async function switchSession(sessionId) {
                     uploadedFiles.push({name: msg.id});
                     addMessageToChat("user", "");
                     uploadedFiles = [];
+                } else {
+                    handleStreamEvent(msg);
+                    if (msg.type === "response") {
+                        handleEndOfBotResponse();
+                    }
                 }
-                handleStreamEvent(msg);
             }
         }
     } catch (error) {
@@ -1050,8 +1084,9 @@ function displaySessionsSidebar() {
     
     // Group sessions by date
     const grouped = {
-        last_week: [],
-        last_month: [],
+        today: [],
+        past_week: [],
+        past_month: [],
         older: []
     };
     
@@ -1059,16 +1094,25 @@ function displaySessionsSidebar() {
     sessions.forEach(session => {
         if (!session.lastModified || !session.title)
             return;
-        const age = (now - new Date(session.lastModified)) / (1000 * 60 * 60 * 24);
-        if (age <= 7) grouped.last_week.push(session);
-        else if (age <= 30) grouped.last_month.push(session);
-        else grouped.older.push(session);
+        const lastModified = new Date(session.lastModified);
+        const ageInDays = (now - lastModified) / (1000 * 60 * 60 * 24);
+
+        if (lastModified.toDateString() === now.toDateString()) {
+            grouped.today.push(session);
+        } else if (ageInDays <= 7) {
+            grouped.past_week.push(session);
+        } else if (ageInDays <= 30) {
+            grouped.past_month.push(session);
+        } else {
+            grouped.older.push(session);
+        }
     });
 
-    grouped.last_week.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-    grouped.last_month.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-    grouped.older.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
-    
+    // Sort sessions within each group
+    for (const sessions of Object.values(grouped)) {
+        sessions.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+    }
+
     // Render sessions
     for (const [period, sessions] of Object.entries(grouped)) {
         if (sessions.length === 0) continue;
@@ -1127,15 +1171,7 @@ document.getElementById('user-input').addEventListener('input', function() {
 // Initialize everything when page loads
 document.addEventListener('DOMContentLoaded', async function() {
     displaySessionsSidebar();
-    // Extract the session parameter from the URL
-    const pathParts = window.location.pathname.split('/');
-    const sessionId = pathParts[4];  // Assuming the URL is in the form /bot/<bot>/session/<session>
 
-    if (sessionId) {
-        // Load existing session
-        currentSessionId = sessionId;
-        await switchSession(sessionId);
-    }
     // collapse and expand sidebars
     const leftSidebar = document.getElementById("left-sidebar");
     const rightSidebar = document.getElementById("right-sidebar");
@@ -1149,4 +1185,34 @@ document.addEventListener('DOMContentLoaded', async function() {
     toggleRightIcon.addEventListener("click", () => {
         rightSidebar.classList.toggle("collapsed");
     });
+
+    // Disable send while checking if server is alive
+    document.getElementById("sendButton").setAttribute("disabled", "");
+    const statusMsg = document.getElementById("statusMsg");
+    try {
+        const response = await fetch('/status');
+        if (response.ok) {
+            const result = await response.json();
+            if (result.status != "ok") {
+                statusMsg.innerHTML = "Agents are currently unavailable. Please try again later.";
+                return;
+            } else {
+                // Status ok, enable send button
+                document.getElementById("sendButton").removeAttribute("disabled");
+                statusMsg.innerHTML = "";
+            }
+        }
+    } catch (error) {
+        statusMsg.innerHTML = "Agents are currently unavailable. Please try again later.";
+        return;
+    }
+
+    // Extract the session parameter from the URL
+    const pathParts = window.location.pathname.split('/');
+    const sessionId = pathParts[4];  // Assuming the URL is in the form /bot/<bot>/session/<session>
+    if (sessionId) {
+        // Load existing session
+        currentSessionId = sessionId;
+        await switchSession(sessionId);
+    }
 });
