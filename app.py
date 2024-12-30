@@ -1,5 +1,5 @@
 from flask import abort, Flask, jsonify, request, render_template, Response
-from json import dumps
+from json import dumps, loads
 import logging
 import requests
 import os
@@ -205,3 +205,31 @@ def get_status():
         return jsonify({"status": "not ok"}), 400
     logger.info("Status endpoint got OK response.")
     return jsonify({"status": "ok"})
+
+@app.route("/feedback", methods=["POST"])
+def feedback():
+    logger.info("Feedback endpoint called.")
+    feedback_data = loads(request.form.get("data"))
+    feedback_index = request.form.get("index")
+    session_id = request.form.get("sessionId")
+    data = {
+        "feedback_text": feedback_data["comment"],
+        "session_id": session_id,
+        "feedback_type": feedback_data["type"],
+        "message_index": feedback_index,
+        "categories": feedback_data["categories"] if feedback_data["type"] == "dislike" else [],
+    }
+    try:
+        with api_request("session_feedback", data=data) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Feedback failed.")
+        return jsonify({"status": "not ok"}), 400
+    if result["message"] == "Success":
+        logger.info("Feedback submitted.")
+        status = "ok"
+    else:
+        logger.info("Feedback failed to submit.")
+        status = "not ok"
+    return jsonify({"status": status})

@@ -68,10 +68,75 @@ function getFileIcon(fileName) {
     }
 }
 
-let feedbackAction = '';
-function setFeedbackAction(element) {
-    feedbackAction = element.title;
-    console.log(feedbackAction);
+function addMessageIcons(container) {
+    const iconsDiv = document.createElement('div');
+    iconsDiv.className = 'message-icons';
+    iconsDiv.innerHTML = `
+        <i class="bi bi-hand-thumbs-up icon" data-bs-toggle="modal" data-bs-target="#likeModal" onclick="setFeedbackIndex(${botMessageIndex})" title="Like"></i>
+        <i class="bi bi-hand-thumbs-down icon" data-bs-toggle="modal" data-bs-target="#dislikeModal" onclick="setFeedbackIndex(${botMessageIndex})" title="Dislike"></i>
+    `;
+    container.appendChild(iconsDiv);
+}
+
+let feedbackIndex = null;
+function setFeedbackIndex(index) {
+    feedbackIndex = index;
+}
+
+async function sendFeedback(type) {
+    let feedbackData = {};
+
+    if (type === 'like') {
+        const likeFeedbackText = document.getElementById('likeFeedbackText').value;
+        feedbackData.type = 'like';
+        feedbackData.comment = likeFeedbackText;
+    } else if (type === 'dislike') {
+        const dislikeCategories = Array.from(document.querySelectorAll('#dislikeModal .form-check-input:checked'))
+            .map(option => option.value);
+        const dislikeFeedbackText = document.getElementById('dislikeFeedbackText').value;
+
+        feedbackData.type = 'dislike';
+        feedbackData.categories = dislikeCategories;
+        feedbackData.comment = dislikeFeedbackText;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('data', JSON.stringify(feedbackData));
+        formData.append('index', feedbackIndex);
+        formData.append('sessionId', currentSessionId);
+        const response = await fetch('/feedback', {
+            method: 'POST',
+            body: formData
+        });
+        if (response.ok) {
+            const data = await response.json();
+            const timeoutTime = 8000;
+            if (data.status === 'ok') {
+                const successAlert = document.getElementById("feedback-success-alert");
+                successAlert.classList.remove('d-none');
+                successAlert.classList.add('d-block');
+                setTimeout(() => {
+                    successAlert.classList.remove('d-block');
+                    successAlert.classList.add('d-none');
+                }, timeoutTime);
+            } else {
+                const failedAlert = document.getElementById("feedback-failed-alert");
+                failedAlert.classList.remove('d-none');
+                failedAlert.classList.add('d-block');
+                setTimeout(() => {
+                    failedAlert.classList.remove('d-block');
+                    failedAlert.classList.add('d-none');
+                }, timeoutTime);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to create new session:', error);
+    }
+
+    const modalId = type === 'like' ? '#likeModal' : '#dislikeModal';
+    const modal = bootstrap.Modal.getInstance(document.querySelector(modalId));
+    modal.hide();
 }
 
 function formatDate(dateString) {
@@ -411,6 +476,14 @@ function scrollToHighlight(element) {
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function clearLoaderMessage() {
+    const loaderMsg = document.getElementById("msgLoader");
+    if (loaderMsg) {
+        // Clear 'Thinking...' message
+        loaderMsg.parentElement.outerHTML = '';
+    }
+}
+
 let eventSource;
 let currentSessionId = null;
 async function sendMessage() {
@@ -427,7 +500,8 @@ async function sendMessage() {
 
     // Hide chatbox placeholder text
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
-    placeholderChat.style.display = 'none';
+    placeholderChat.classList.remove('d-block');
+    placeholderChat.classList.add('d-none');
 
     // Add user message
     addMessageToChat('user', userInput.value);
@@ -502,12 +576,12 @@ async function sendMessage() {
         eventSource.onerror = function(error) {
             console.error('EventSource failed:', error);
             eventSource.close();
-            const loaderMsg = document.getElementById("msgLoader");
-            loaderMsg.parentElement.outerHTML = '';
-            addMessageToChat('error', 'An error occurred while streaming the response.');
+            clearLoaderMessage();
+            addMessageToChat('error', 'An error occurred in the underlying connection.');
         };
     } catch (error) {
         console.error('Error: ', error);
+        clearLoaderMessage();
         addMessageToChat('error', 'An error occurred while sending your message.');
     }
 }
@@ -525,7 +599,6 @@ function handleEndOfBotResponse() {
 }
 
 function handleStreamEvent(data) {
-    const loaderMsg = document.getElementById("msgLoader");
     switch(data.type) {
         case 'user':
             addMessageToChat(data.type, data.content);
@@ -551,10 +624,7 @@ function handleStreamEvent(data) {
             }
             break;
         case 'tool_call':
-            if (loaderMsg) {
-                // Clear 'Thinking...' message
-                loaderMsg.parentElement.outerHTML = '';
-            }
+            clearLoaderMessage();
             let argsDict = JSON.parse(data.args.replaceAll('\'', '"'));
             let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
@@ -592,10 +662,7 @@ function handleStreamEvent(data) {
             toolDots.innerHTML = '...finished.';
             break;
         case 'response':
-            if (loaderMsg) {
-                // Clear 'Thinking...' message
-                loaderMsg.parentElement.outerHTML = '';
-            }
+            clearLoaderMessage();
             if (!botMessageContainer) {
                 // It's the beginning of a bot message
                 // Create bot message container
@@ -624,6 +691,7 @@ function handleStreamEvent(data) {
             botMessageElement.appendChild(tempContainer);
             break;
         case 'error':
+            clearLoaderMessage();
             addMessageToChat('error', 'An error occurred while streaming the response.');
             if (eventSource) {
                 eventSource.close();
@@ -673,16 +741,6 @@ function addMessageToChat(type, content) {
     messageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
-function addMessageIcons(container) {
-    const iconsDiv = document.createElement('div');
-    iconsDiv.className = 'message-icons';
-    iconsDiv.innerHTML = `
-        <i class="bi bi-hand-thumbs-up icon" data-bs-toggle="modal" data-bs-target="#likeModal" onclick="setFeedbackAction(this)" title="Like"></i>
-        <i class="bi bi-hand-thumbs-down icon" data-bs-toggle="modal" data-bs-target="#dislikeModal" onclick="setFeedbackAction(this)" title="Dislike"></i>
-    `;
-    container.appendChild(iconsDiv);
-}
-
 function generateSourceHTML(source, index, entities) {
     let html = '';
     let url = '';
@@ -701,7 +759,7 @@ function generateSourceHTML(source, index, entities) {
             }
             let downloadUrl = '';
             if (Object.hasOwn(source.entity.metadata, 'download_url')) {
-                downloadUrl = `<p class="card-text"><strong>Download Link</strong>: <a href="${source.entity.metadata.download_url}">${source.entity.metadata.download_url}</a></p>`;
+                downloadUrl = `<p class="card-text"><strong>Original Link</strong>: <a href="${source.entity.metadata.download_url}">${source.entity.metadata.download_url}</a></p>`;
             }
             let summary = '';
             if (Object.hasOwn(source.entity.metadata, 'summary')) {
@@ -719,6 +777,49 @@ function generateSourceHTML(source, index, entities) {
             let caseName = source.entity.metadata.case_name;
             if (caseName.length > 150) {
                 caseName = caseName.substring(0, 150) + '...';
+            }
+            let opinionType = 'Unknown';
+            if (Object.hasOwn(source.entity.metadata, 'type')) {
+                // possible values: ['010combined', '015unamimous', '020lead', '025plurality', '030concurrence', '035concurrenceinpart', '040dissent', '050addendum', '060remittitur', '070rehearing', '080onthemerits', '090onmotiontostrike']
+                switch (source.entity.metadata.type) {
+                    case '010combined':
+                        opinionType = "Combined";
+                        break;
+                    case '015unamimous':
+                    case '015unaminous':
+                        opinionType = "Unanimous";
+                        break;
+                    case '020lead':
+                        opinionType = "Lead";
+                        break;
+                    case '025plurality':
+                        opinionType = "Plurality";
+                        break;
+                    case '030concurrence':
+                        opinionType = "Concurrence";
+                        break;
+                    case '035concurrenceinpart':
+                        opinionType = "Concurrence in Part";
+                        break;
+                    case '040dissent':
+                        opinionType = "Dissent";
+                        break;
+                    case '050addendum':
+                        opinionType = "Addendum";
+                        break;
+                    case '060remittitur':
+                        opinionType = "Remittitur";
+                        break;
+                    case '070rehearing':
+                        opinionType = "Rehearing";
+                        break;
+                    case '080onthemerits':
+                        opinionType = "On the Merits";
+                        break;
+                    case '090onmotiontostrike':
+                        opinionType = "On Motion to Strike";
+                        break;
+                }
             }
             // Modify the excerpt part to include multiple excerpts
             entitiesHTML = `
@@ -751,6 +852,7 @@ function generateSourceHTML(source, index, entities) {
                     <div class="card-body">
                         <h6 class="card-subtitle mb-2">${source.entity.metadata.court_name}</h6>
                         <h6 class="card-subtitle mb-2 text-muted">${authorAndDates}</h6>
+                        <p class="card-text"><strong>Opinion Type</strong>: ${opinionType}</p>
                         <p class="card-text"><strong>CourtListener Link</strong>: <a href="${url}">${url}</a></p>
                         ${downloadUrl}
                         ${summary}
@@ -879,7 +981,8 @@ function updateSources(newSources) {
     sourceList.innerHTML = ''; // Clear previous sources
     // Hide sources placeholder text
     const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
-    placeholderSource.style.display = 'none';
+    placeholderSource.classList.remove('d-block');
+    placeholderSource.classList.add('d-none');
     newSources.forEach((source, i) => {
         if (sourceMap.has(source.id)) {
             let existingEntities = sourceMap.get(source.id).entities;
@@ -947,12 +1050,12 @@ function clearSessionMessages() {
     const sourceList = document.getElementById('source-list');
     sourceList.innerHTML = '';
     // Display placeholder texts
-    if (!document.getElementById("right-sidebar").classList.contains("collapsed")) {
-        const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
-        placeholderSource.style.display = 'block';
-    }
+    const placeholderSource = document.querySelector('.right-sidebar .placeholder-text');
+    placeholderSource.classList.remove('d-none');
+    placeholderSource.classList.add('d-block');
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
-    placeholderChat.style.display = 'block';
+    placeholderChat.classList.remove('d-none');
+    placeholderChat.classList.add('d-block');
     // Remove old highlighted session
     if (currentSessionId) {
         const sessionSidebarEntry = document.getElementById(`session-${currentSessionId}`);
@@ -989,6 +1092,11 @@ async function switchSession(sessionId) {
     // Update URL
     window.history.pushState({}, '', `/bot/${currentBotId}/session/${sessionId}`);
 
+    // Hide chatbox placeholder texts
+    const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+    placeholderChat.classList.remove('d-block');
+    placeholderChat.classList.add('d-none');
+
     // Get bot info
     try {
         const response = await fetch(`/bot/${currentBotId}/info`);
@@ -1009,7 +1117,7 @@ async function switchSession(sessionId) {
         }
     } catch (error) {
         console.error('Failed to load agent:', error);
-        addMessageToChat('error', 'Failed to load agent');
+        addMessageToChat('error', 'Failed to load agent.');
     }
 
     // Get messages
@@ -1017,9 +1125,6 @@ async function switchSession(sessionId) {
         const response = await fetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
             const messages = await response.json();
-            // Hide chatbox placeholder texts
-            const placeholderChat = document.querySelector('.chat-container .placeholder-text');
-            placeholderChat.style.display = 'none';
             for (const msg of messages.history) {
                 if (msg.type === "file") {
                     uploadedFiles.push({name: msg.id});
@@ -1035,7 +1140,7 @@ async function switchSession(sessionId) {
         }
     } catch (error) {
         console.error('Failed to load session messages:', error);
-        addMessageToChat('error', 'Failed to load conversation history');
+        addMessageToChat('error', 'Failed to load conversation history.');
     }
 }
 
