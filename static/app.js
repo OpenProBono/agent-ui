@@ -1158,8 +1158,10 @@ function clearSession() {
         console.error('Unable to retrieve bot ID.');
     }
 
-    // Clear session ID variable
+    // Clear session variables
     currentSessionId = null;
+    botMessageIndex = 0;
+    botMessageTexts = [];
 }
 
 async function getCurrentSessionTitle() {
