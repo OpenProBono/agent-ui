@@ -865,8 +865,8 @@ function generateSourceHTML(source, index, entities) {
             break;
         case 'url':
             url = source.id;
-            let urlSource = source.entity.metadata?.source ?? 'Unknown Source';
-            let urlTitle = source.entity.metadata?.title ?? 'Unknown Title';
+            let urlSource = source.entity.metadata?.source ?? 'Web Search Result';
+            let urlTitle = source.entity.metadata?.title ?? 'Title Not Found';
             aiSummary = '';
             if (Object.hasOwn(source.entity.metadata, 'ai_summary')) {
                 mrkdwnSummary = marked.parse(source.entity.metadata.ai_summary);
