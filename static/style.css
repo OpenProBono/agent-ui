@@ -27,7 +27,10 @@ body, html {
     border-left: 2px solid #737373;
     overflow-y: auto;
     transition: width 0.3s ease, padding 0.3s ease;
-    position: relative; /* Needed for centering the placeholder */
+    position: absolute; /* Needed for centering the placeholder */
+    height: 100%;
+    z-index: 100;
+    right: 0;
 }
 /* Adjust width for the collapsed state */
 .sidebar.collapsed,
@@ -37,6 +40,20 @@ body, html {
     padding: 0;
     margin: 0;
     border: none;
+}
+.right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar {
+    position: absolute;
+    right: 32%;
+    z-index: 200;
+}
+/* Base icon styles */
+.content .bi-layout-text-sidebar,
+.content .bi-layout-text-sidebar-reverse {
+    background: white;
+    padding: 10px;
+    border-radius: 50%;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    pointer-events: auto; /* Ensure icons remain clickable */
 }
 .content {
     flex: 1;
@@ -62,7 +79,7 @@ body, html {
     padding: 10px;
     margin-left: auto;
     width: fit-content; 
-    max-width: 70%;
+    max-width: 90%;
 }
 .bot-message-container {
     display: flex;
@@ -74,7 +91,7 @@ body, html {
     border-radius: 10px 10px 10px 0;
     padding: 10px;
     width: fit-content;
-    max-width: 70%;
+    max-width: 90%;
 }
 @keyframes fadeIn {
     from {opacity: 0}
@@ -88,7 +105,7 @@ body, html {
     border-radius: 10px 10px 10px 0;
     padding: 10px;
     width: fit-content;
-    max-width: 70%;
+    max-width: 90%;
 }
 .tool-message {
     background-color: #00c9d2;
@@ -96,7 +113,7 @@ body, html {
     border-radius: 10px 10px 10px 0;
     padding: 10px;
     width: fit-content;
-    max-width: 70%;
+    max-width: 90%;
 }
 .message-icons {
     display: flex;
@@ -228,5 +245,39 @@ body, html {
 @media (max-width: 767px) {
     .sidebar, .right-sidebar {
         width: 80%;
+        position: absolute;
+        z-index: 100;
+        height: 100%;
+    }
+    .right-sidebar {
+        right: 0;
+    }
+    /* Content blur when sidebar open */
+    .sidebar:not(.collapsed) ~ .content > :not(#toolbar) {
+        filter: blur(2px);
+    }
+    /* Left icon positioning when sidebar expanded */
+    .sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar-reverse {
+        position: absolute;
+        left: 85%; /* Position just outside the left sidebar */
+        top: 20px;
+        z-index: 200;
+    }
+    .sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar {
+        display: none;
+    }
+    .right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar-reverse {
+        display: none;
+    }
+    /* Right sidebar blur */
+    .right-sidebar:not(.collapsed) ~ .content > :not(#toolbar) {
+        filter: blur(2px);
+    }
+    /* Right icon positioning when sidebar expanded */
+    .right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar {
+        position: absolute;
+        right: 85%;
+        top: 20px;
+        z-index: 200;
     }
 }

@@ -3,6 +3,7 @@ function acceptDisclaimer() {
     document.querySelector('.chat-container').classList.remove('d-none');
     document.querySelector('.file-upload').classList.remove('d-none');
     document.querySelector('.input-group').classList.replace('d-none', 'd-flex');
+    document.getElementById('toolbar').classList.replace('d-none', 'd-flex');
 }
 
 function declineDisclaimer() {
@@ -1264,6 +1265,33 @@ function addSessionToSidebar(session) {
     }
 }
 
+function toggleSidebar(side) {
+    const leftSidebar = document.getElementById('left-sidebar');
+    const rightSidebar = document.getElementById('right-sidebar');
+    
+    // Check if we're on mobile
+    if (window.innerWidth <= 767) {
+        if (side === 'left') {
+            // If toggling left sidebar
+            leftSidebar.classList.toggle('collapsed');
+            // Ensure right sidebar is collapsed
+            rightSidebar.classList.add('collapsed');
+        } else if (side === 'right') {
+            // If toggling right sidebar
+            rightSidebar.classList.toggle('collapsed');
+            // Ensure left sidebar is collapsed
+            leftSidebar.classList.add('collapsed');
+        }
+    } else {
+        // On desktop, normal toggle behavior
+        if (side === 'left') {
+            leftSidebar.classList.toggle('collapsed');
+        } else if (side === 'right') {
+            rightSidebar.classList.toggle('collapsed');
+        }
+    }
+}
+
 // Allow sending message with Enter key
 document.getElementById('user-input').addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
@@ -1281,20 +1309,6 @@ document.getElementById('user-input').addEventListener('input', function() {
 // Initialize everything when page loads
 document.addEventListener('DOMContentLoaded', async function() {
     displaySessionsSidebar();
-
-    // collapse and expand sidebars
-    const leftSidebar = document.getElementById("left-sidebar");
-    const rightSidebar = document.getElementById("right-sidebar");
-    const toggleLeftIcon = document.querySelector(".bi-layout-text-sidebar-reverse");
-    const toggleRightIcon = document.querySelector(".bi-layout-text-sidebar");
-
-    toggleLeftIcon.addEventListener("click", () => {
-        leftSidebar.classList.toggle("collapsed");
-    });
-
-    toggleRightIcon.addEventListener("click", () => {
-        rightSidebar.classList.toggle("collapsed");
-    });
 
     // Disable send while checking if server is alive
     document.getElementById("sendButton").setAttribute("disabled", "");
