@@ -11,6 +11,8 @@ body, html {
 .wrapper {
     display: flex;
     height: 100%;
+    position: relative;
+    overflow-x: hidden;
 }
 .sidebar {
     width: 15%;
@@ -21,16 +23,17 @@ body, html {
     transition: width 0.3s ease, padding 0.3s ease;
 }
 .right-sidebar {
+    position: absolute; /* Relative to the wrapper */
+    top: 0;
+    right: 0; /* Initial position */
     width: 30%;
     background-color: #f0f0f0;
     padding: 20px;
     border-left: 2px solid #737373;
     overflow-y: auto;
-    transition: width 0.3s ease, padding 0.3s ease;
-    position: absolute; /* Needed for centering the placeholder */
+    transition: right 0.3s ease; /* Smooth slide-in effect */
     height: 100%;
     z-index: 100;
-    right: 0;
 }
 /* Adjust width for the collapsed state */
 .sidebar.collapsed,
@@ -41,10 +44,14 @@ body, html {
     margin: 0;
     border: none;
 }
-.right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar {
-    position: absolute;
-    right: 32%;
-    z-index: 200;
+.right-sidebar:not(.collapsed) {
+    right: 0;
+}
+.right-sidebar.collapsed {
+    right: -30%; /* Slide out of view */
+}
+.right-sidebar:not(.collapsed) ~ .content {
+    margin-right: 30%; /* Shift content to the left when sidebar is visible */
 }
 /* Base icon styles */
 .content .bi-layout-text-sidebar,
@@ -60,7 +67,7 @@ body, html {
     padding: 20px;
     display: flex;
     flex-direction: column;
-    transition: margin 0.3s ease;
+    transition: margin-right 0.3s ease;
 }
 .chat-container {
     flex: 1;
@@ -253,7 +260,8 @@ body, html {
         right: 0;
     }
     /* Content blur when sidebar open */
-    .sidebar:not(.collapsed) ~ .content > :not(#toolbar) {
+    .sidebar:not(.collapsed) ~ .content > :not(#toolbar),
+    .right-sidebar:not(.collapsed) ~ .content > :not(#toolbar) {
         filter: blur(2px);
     }
     /* Left icon positioning when sidebar expanded */
@@ -263,21 +271,16 @@ body, html {
         top: 20px;
         z-index: 200;
     }
-    .sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar {
-        display: none;
-    }
-    .right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar-reverse {
-        display: none;
-    }
-    /* Right sidebar blur */
-    .right-sidebar:not(.collapsed) ~ .content > :not(#toolbar) {
-        filter: blur(2px);
-    }
     /* Right icon positioning when sidebar expanded */
     .right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar {
         position: absolute;
         right: 85%;
         top: 20px;
         z-index: 200;
+    }
+    /* Hide opposing icon when sidebar expanded */
+    .sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar,
+    .right-sidebar:not(.collapsed) ~ .content .bi-layout-text-sidebar-reverse {
+        display: none;
     }
 }
