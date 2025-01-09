@@ -1,4 +1,5 @@
 function acceptDisclaimer() {
+    setDisclaimerAccepted(true);
     document.querySelector('.disclaimer').classList.add('d-none');
     document.querySelector('.chat-container').classList.remove('d-none');
     document.querySelector('.file-upload').classList.remove('d-none');
@@ -7,7 +8,15 @@ function acceptDisclaimer() {
 }
 
 function declineDisclaimer() {
-    alert('You must accept the disclaimer to use OpenProBono AI.');
+    setDisclaimerAccepted(false);
+}
+
+function getDisclaimerAccepted() {
+    return JSON.parse(localStorage.getItem('disclaimerAccepted') || false);
+}
+
+function setDisclaimerAccepted(disclaimerAccepted) {
+    localStorage.setItem('disclaimerAccepted', JSON.stringify(disclaimerAccepted));
 }
 
 let uploadedFiles = [];
@@ -1236,7 +1245,8 @@ function displaySessionsSidebar() {
                 ${sessions.map(session => `
                     <li id="session-${session.id}" class="conversation-item">
                         <a href="#" class="text-decoration-none text-truncate d-block" 
-                            onclick="switchSession('${session.id}'); return false;">
+                            onclick="switchSession('${session.id}'); return false;"
+                            title="${session.title}">
                             ${session.title}
                         </a>
                     </li>
@@ -1308,6 +1318,15 @@ document.getElementById('user-input').addEventListener('input', function() {
 
 // Initialize everything when page loads
 document.addEventListener('DOMContentLoaded', async function() {
+    // Check if disclaimer has been accepted
+    const disclaimerAccepted = getDisclaimerAccepted();
+    if (!disclaimerAccepted) {
+        document.querySelector('.disclaimer').classList.remove('d-none');
+        document.querySelector('.chat-container').classList.add('d-none');
+        document.querySelector('.file-upload').classList.add('d-none');
+        document.querySelector('.input-group').classList.replace('d-flex', 'd-none');
+        document.getElementById('toolbar').classList.replace('d-flex', 'd-none');
+    }
     displaySessionsSidebar();
 
     // Disable send while checking if server is alive

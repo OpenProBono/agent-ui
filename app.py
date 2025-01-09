@@ -150,6 +150,7 @@ def bot_info(bot):
     logger.debug("Bot endpoint info got response: %s", result)
     return jsonify(result)
 
+
 @app.route("/sessions", methods=["GET"])
 def get_sessions():
     # Get all sessions for this browser from localStorage on client side
@@ -166,7 +167,7 @@ def get_sessions():
                 sessions.append({
                     "id": session_id,
                     "title": session_data.get("title", "Untitled Chat"),
-                    "lastModified": session_data.get("last_modified"),
+                    "lastModified": session_data.get("timestamp"),
                     "botId": session_data.get("bot_id"),
                 })
         logger.info("Sessions endpoint got responses: %s", sessions)
@@ -205,6 +206,7 @@ def get_status():
         return jsonify({"status": "not ok"}), 400
     logger.info("Status endpoint got OK response.")
     return jsonify({"status": "ok"})
+
 
 @app.route("/feedback", methods=["POST"])
 def feedback():
