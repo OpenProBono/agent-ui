@@ -527,7 +527,7 @@ async function sendMessage() {
         let sessions = loadSavedSessions();
         // If it's a new session, add it to local storage
         if (!sessions.find(session => session.id == currentSessionId)) {
-            const newSession = {"title": "New Chat", "lastModified": getFirebaseDate(), "id": currentSessionId};
+            const newSession = {"title": "New Chat", "lastModified": getFirebaseDate(), "id": currentSessionId, "botId": botId};
             sessions.push(newSession);
             saveSessions(sessions);
             addSessionToSidebar(newSession);
