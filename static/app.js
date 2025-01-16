@@ -384,7 +384,7 @@ function processCitations() {
 
     // Replace each citation with an interactive link that includes its instance
     let instanceCounters = new Map(); // Track current instance while replacing
-    htmlContent = htmlContent.replace(/\[(\d+)\]/g, (match, num) => {
+    htmlContent = htmlContent.replace(/\[(?:Source\s*)?(\d+)\]/g, (match, num) => {
         const citationNum = parseInt(num);
         // Increment instance counter for this citation number
         if (!instanceCounters.has(citationNum)) {
@@ -1185,7 +1185,9 @@ async function getCurrentSessionTitle() {
         savedSessions[savedSessions.findIndex((session) => session.id === fetchedSessions[0].id)] = fetchedSessions[0];
         saveSessions(savedSessions);
         // update title in sidebar
-        document.querySelector(`#session-${currentSessionId} a`).innerText = fetchedSessions[0].title;
+        const titleElement = document.querySelector(`#session-${currentSessionId} a`);
+        titleElement.innerText = fetchedSessions[0].title;
+        titleElement.title = fetchedSessions[0].title;
     }
 }
 
