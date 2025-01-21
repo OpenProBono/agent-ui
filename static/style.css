@@ -77,8 +77,7 @@ body, html {
 }
 .message {
     margin-bottom: 10px;
-    overflow-wrap: break-word;
-    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 .user-message {
     background-color: #5c28df;
