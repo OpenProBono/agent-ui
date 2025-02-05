@@ -327,39 +327,39 @@ function addCitationHighlights(e) {
                     highlightedRegions[i] = true;
                 }
 
-                const colorIndex = Math.floor(Math.random() * highlightColors.length);
-                const color = highlightColors[colorIndex];
+                    const colorIndex = Math.floor(Math.random() * highlightColors.length);
+                    const color = highlightColors[colorIndex];
 
-                textToUpdate = textToUpdate.replace(
-                    match.text,
-                    `<span class="active-highlight" 
-                        style="background-color:${color}; cursor: pointer;" 
-                        onclick="scrollToHighlight(document.querySelector('#match-${match.startIndex}')); 
-                                return false;">
-                        ${match.text}
-                    </span>`
-                );
+                    textToUpdate = textToUpdate.replace(
+                        match.text,
+                        `<span class="active-highlight" 
+                            style="background-color:${color}; cursor: pointer;" 
+                            onclick="scrollToHighlight(document.querySelector('#match-${match.startIndex}')); 
+                                    return false;">
+                            ${match.text}
+                        </span>`
+                    );
 
                 // Highlight in source or summary as applicable
                 if (match.isSummary) {
                     const summaryElement = sourceCard.querySelector(`.ai-summary`);
                     const srcIndex = sourceSummary.toLowerCase().indexOf(match.text.toLowerCase());
                     const srcLcs = sourceSummary.substring(srcIndex, srcIndex + match.text.length);
-                    summaryElement.innerHTML = summaryElement.innerHTML.replace(
-                        srcLcs,
-                        `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
-                    );
+                        summaryElement.innerHTML = summaryElement.innerHTML.replace(
+                            srcLcs,
+                            `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
+                        );
                 } else {
                     const excerptElement = sourceCard.querySelector(`.list-group-item:nth-child(${match.entityIndex + 1}) div`);
                     const srcIndex = sourceEntities[match.entityIndex].text.toLowerCase().indexOf(match.text.toLowerCase());
                     const srcLcs = sourceEntities[match.entityIndex].text.substring(srcIndex, srcIndex + match.text.length);
-                    excerptElement.innerHTML = excerptElement.innerHTML.replace(
-                        srcLcs,
-                        `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
-                    );
+                        excerptElement.innerHTML = excerptElement.innerHTML.replace(
+                            srcLcs,
+                            `<span class="active-highlight" id="match-${match.startIndex}" style="background-color:${color};">${srcLcs}</span>`
+                        );
+                    }
                 }
             }
-        }
 
         // Highlight substring in response
         botMessage.innerHTML = botMessage.innerHTML.replace(oldText, textToUpdate);
@@ -499,7 +499,7 @@ let currentSessionId = null;
 async function sendMessage() {
     // Extract the bot parameter from the URL
     const pathParts = window.location.pathname.split('/');
-    const botId = pathParts[2];  // Assuming the URL is in the form /bot/<bot>
+    const botId = pathParts[2];  // Assuming the URL is in the form /agent/<bot>
     if (!botId) {
         alert('No bot ID provided in URL.');
         return;
@@ -1038,12 +1038,12 @@ function updateSources(newSources) {
 
 async function getNewSession(botId) {
     try {
-        const response = await fetch(`/bot/${botId}/new_session`);
+        const response = await fetch(`/agent/${botId}/new_session`);
         if (response.ok) {
             const data = await response.json();
             currentSessionId = data.session_id;
             // Update URL without reloading page, adding session ID to URL
-            window.history.pushState({}, '', `/bot/${botId}/session/${currentSessionId}`);
+            window.history.pushState({}, '', `/agent/${botId}/session/${currentSessionId}`);
         }
     } catch (error) {
         console.error('Failed to create new session:', error);
@@ -1100,7 +1100,7 @@ async function switchSession(sessionId) {
     botMessageTexts = [];
 
     // Update URL
-    window.history.pushState({}, '', `/bot/${currentBotId}/session/${sessionId}`);
+    window.history.pushState({}, '', `/agent/${currentBotId}/session/${sessionId}`);
 
     // Hide chatbox placeholder texts
     const placeholderChat = document.querySelector('.chat-container .placeholder-text');
@@ -1109,7 +1109,7 @@ async function switchSession(sessionId) {
 
     // Get bot info
     try {
-        const response = await fetch(`/bot/${currentBotId}/info`);
+        const response = await fetch(`/agent/${currentBotId}/info`);
         if (response.ok) {
             const result = await response.json();
             const provider = document.getElementById('provider');
@@ -1159,11 +1159,11 @@ function clearSession() {
 
     // Extract the bot parameter from the URL
     const pathParts = window.location.pathname.split('/');
-    const botId = pathParts[2];  // Assuming the URL is in the form /bot/<bot>
+    const botId = pathParts[2];  // Assuming the URL is in the form /agent/<bot>
 
     // Update URL to remove session ID but retain bot
     if (botId) {
-        window.history.pushState({}, '', `/bot/${botId}`);
+        window.history.pushState({}, '', `/agent/${botId}`);
     } else {
         console.error('Unable to retrieve bot ID.');
     }
@@ -1354,7 +1354,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Extract the session parameter from the URL
     const pathParts = window.location.pathname.split('/');
-    const sessionId = pathParts[4];  // Assuming the URL is in the form /bot/<bot>/session/<session>
+    const sessionId = pathParts[4];  // Assuming the URL is in the form /agent/<bot>/session/<session>
     if (sessionId) {
         // Load existing session
         currentSessionId = sessionId;

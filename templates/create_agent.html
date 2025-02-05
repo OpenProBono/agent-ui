@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OpenProBono | Create Agent</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.png">
+  <style>
+    /* Set primary font-family and colors */
+    body {
+        font-family: 'DM Sans', 'IBM Plex Sans', sans-serif;
+        font-optical-sizing: auto;
+        background-image: url('/static/images/bg.png');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        color: #080808; /* Primary text */
+    }
+    h1, h2, h3 {
+        color: #080808;
+    }
+    .sidebar {
+        width: 200px;
+        height: 100vh;
+        position: fixed;
+        background-color: #1f1f1f;
+        color: #f8fcfd;
+        padding-top: 20px;
+    }
+    .sidebar a {
+        color: #f8fcfd;
+        text-decoration: none;
+        padding: 10px 20px;
+        display: block;
+    }
+    .sidebar a:hover {
+        background-color: #737373;
+    }
+    .main-content {
+        margin-left: 210px;
+        padding: 20px;
+    }
+    /* Form section styling */
+    .form-section {
+        background-color: #F0F0F0; /* Additional background */
+        padding: 20px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+        border: 1px solid #737373; /* Using a secondary color */
+    }
+    label {
+        font-weight: 600;
+        color: #1F1F1F;
+    }
+    /* Gradient button style */
+    .btn-gradient {
+        background: linear-gradient(90deg, #00C9D2, #1340DF, #5C28DF);
+        border: none;
+        color: #FFFFFF;
+    }
+  </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h5 class="text-center">OpenProBono</h5>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/agents" class="active">Agents</a>
+        <a href="/resources">Resources</a>
+    </div>
+    <div class="main-content">
+        <h1 class="mb-4">🛠️ Create Agent</h1>
+        
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+        
+        <form method="post" action="{{ url_for('create_agent') }}">
+            <!-- Core Agent Configuration -->
+            <div class="form-section">
+              <h2>Core Agent Configuration</h2>
+              <div class="form-group">
+                <label for="system_prompt">System Prompt</label>
+                <textarea class="form-control" id="system_prompt" name="system_prompt" rows="3"
+                  placeholder="Sets the overall context and behavior of the bot."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="message_prompt">Message Prompt</label>
+                <textarea class="form-control" id="message_prompt" name="message_prompt" rows="3"
+                  placeholder="Appended to each user message for consistent context."></textarea>
+              </div>
+            </div>
+            
+            <!-- Search Tools Configuration -->
+            <div class="form-section">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>Search Tools Configuration</h2>
+                <button type="button" class="btn btn-primary" id="add-search-tool-btn">Add Search Tool</button>
+              </div>
+              <div id="search-tools-container">
+                <!-- Dynamic Search Tool fields will be added here -->
+              </div>
+            </div>
+            
+            <!-- VDB Tools Configuration -->
+            <div class="form-section">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>VDB Tools Configuration</h2>
+                <button type="button" class="btn btn-primary" id="add-vdb-tool-btn">Add VDB Tool</button>
+              </div>
+              <div id="vdb-tools-container">
+                <!-- Dynamic VDB Tool fields will be added here -->
+              </div>
+            </div>
+            
+            <!-- Chat Model Configuration -->
+            <div class="form-section">
+              <h2>Chat Model Configuration</h2>
+              <div class="form-group">
+                <label for="engine">Engine</label>
+                <select class="form-control" id="engine" name="engine">
+                  <option value="openai">openai</option>
+                  <option value="anthropic">anthropic</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="model">Model</label>
+                <input type="text" class="form-control" id="model" name="model" value="gpt-4o"
+                  placeholder="Specific model to use (e.g., 'gpt-4')">
+              </div>
+              <div class="form-group">
+                <label for="temperature">Model Temperature</label>
+                <input type="number" step="0.1" class="form-control" id="temperature" name="temperature" min="0" max="1" value="0"
+                  placeholder="Controls randomness in responses">
+              </div>
+              <div class="form-group">
+                <label for="seed">Model Seed</label>
+                <input type="number" class="form-control" id="seed" name="seed" min="0" max="100" value="0"
+                  placeholder="Controls randomness in responses">
+              </div>
+              <p><strong>Review your configuration before creating the bot.</strong></p>
+            </div>
+            
+            <button type="submit" class="btn btn-gradient btn-lg btn-block">Create Agent</button>
+        </form>
+    </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script>
+    // --- Search Tools Section ---
+    function addSearchToolField() {
+      const container = document.getElementById('search-tools-container');
+      const div = document.createElement('div');
+      div.classList.add('border', 'p-3', 'mb-3');
+      div.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+          <h5>Search Tool</h5>
+          <button type="button" class="btn btn-danger btn-sm remove-search-tool">Remove</button>
+        </div>
+        <div class="form-group">
+          <label>Tool Name</label>
+          <input type="text" class="form-control" name="search_name[]" placeholder="Unique identifier for this search tool">
+        </div>
+        <div class="form-group">
+          <label>Method</label>
+          <select class="form-control" name="search_method[]">
+            <option value="dynamic_serpapi">dynamic_serpapi</option>
+            <option value="serpapi">serpapi</option>
+            <option value="google">google</option>
+            <option value="courtlistener">courtlistener</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prefix</label>
+          <input type="text" class="form-control" name="search_prefix[]" placeholder="Prefix added to all queries using this tool">
+        </div>
+        <div class="form-group">
+          <label>Prompt</label>
+          <textarea class="form-control" name="search_prompt[]" rows="2" placeholder="Instructions on when and how to use this tool"></textarea>
+        </div>
+      `;
+      // Attach event listener for the remove button
+      div.querySelector('.remove-search-tool').addEventListener('click', function() {
+        div.remove();
+        reIndexSearchToolFields();
+      });
+      container.appendChild(div);
+      reIndexSearchToolFields();
+    }
+    
+    function reIndexSearchToolFields() {
+      const container = document.getElementById('search-tools-container');
+      const groups = container.children;
+      for (let i = 0; i < groups.length; i++) {
+        groups[i].querySelector('h5').innerText = `Search Tool ${i + 1}`;
+      }
+    }
+    
+    // --- VDB Tools Section ---
+    function addVdbToolField() {
+      const container = document.getElementById('vdb-tools-container');
+      const div = document.createElement('div');
+      div.classList.add('border', 'p-3', 'mb-3');
+      div.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+          <h5>VDB Tool</h5>
+          <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
+        </div>
+        <div class="form-group">
+          <label>VDB Name</label>
+          <input type="text" class="form-control" name="vdb_name[]" placeholder="Unique identifier for this VDB tool">
+        </div>
+        <div class="form-group">
+          <label>Collection Name</label>
+          <select class="form-control" name="vdb_collection[]">
+            <option value="courtlistener">courtlistener</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>K</label>
+          <input type="number" class="form-control" name="vdb_k[]" min="1" value="4" placeholder="Number of results to return">
+        </div>
+        <div class="form-group">
+          <label>VDB Prompt</label>
+          <textarea class="form-control" name="vdb_prompt[]" rows="2" placeholder="Instructions on when and how to use this VDB tool"></textarea>
+        </div>
+      `;
+      // Attach event listener for the remove button
+      div.querySelector('.remove-vdb-tool').addEventListener('click', function() {
+        div.remove();
+        reIndexVdbToolFields();
+      });
+      container.appendChild(div);
+      reIndexVdbToolFields();
+    }
+    
+    function reIndexVdbToolFields() {
+      const container = document.getElementById('vdb-tools-container');
+      const groups = container.children;
+      for (let i = 0; i < groups.length; i++) {
+        groups[i].querySelector('h5').innerText = `VDB Tool ${i + 1}`;
+      }
+    }
+    
+    // Attach event listeners to the Add buttons
+    document.getElementById('add-search-tool-btn').addEventListener('click', addSearchToolField);
+    document.getElementById('add-vdb-tool-btn').addEventListener('click', addVdbToolField);
+    
+    // Optionally, you can add one default search tool on load:
+    // window.addEventListener('load', addSearchToolField);
+  </script>
+</body>
+</html>

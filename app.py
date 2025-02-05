@@ -1,11 +1,18 @@
-from flask import abort, Flask, jsonify, request, render_template, Response
+import datetime
+import re
+import time
+
+from flask import abort, Flask, jsonify, request, flash, redirect, url_for,render_template, Response
+from html import escape
 from json import dumps, loads
+from markdown import markdown
 import logging
 import requests
 import os
 
 
 app = Flask(__name__)
+app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
 formatter = logging.Formatter("%(asctime)s %(levelname)s %(funcName)s %(message)s")
 handler = logging.StreamHandler()
@@ -33,22 +40,56 @@ def api_request_stream(endpoint, data=None):
     return requests.post(url, headers=HEADERS, json=data, stream=True)
 
 
-@app.route("/bot/<bot>", methods=["GET"])
-@app.route("/bot/<bot>/", methods=["GET"])
-@app.route("/bot/<bot>/session/<session>", methods=["GET"])
-def chatbot(bot, session=None):
-    data = {"bot_id": bot}
-    logger.info("Fetching bot info for ID %s", bot)
+@app.route("/")
+@app.route("/dashboard")
+def index():
+    # Example data
+    agents = [
+        {"id": 1, "name": "default_bot"},
+        {"id": 2, "name": "default_anthropic"},
+        {"id": 3, "name": "manual_sources_case_search"},
+    ]
+    metrics = {
+        "agents_created": len(agents),
+        "messages_with_agents": 150,
+        "searches_completed": 45,
+        "file_storage_used": "2 GB"
+    }
+    return render_template("index.html", agents=agents, metrics=metrics)
+
+
+@app.route("/agents")
+def agents():
+    # Example data
+    agents = [
+        {"id": 1, "name": "default_bot", "created_on": datetime.date.today(), "tools": 2, "resources": 10, "dynamic": True},
+        {"id": 2, "name": "default_anthropic", "created_on": datetime.date.today(), "tools": 1, "resources": 4, "dynamic": False},
+        {"id": 3, "name": "manual_sources_case_search", "created_on": datetime.date.today(), "tools": 4, "resources": 150, "dynamic": True},
+    ]
+    return render_template("agents.html", agents=agents)
+
+
+@app.route("/resources")
+def resources():
+    return render_template("resources.html")
+
+
+@app.route("/agent/<agent>", methods=["GET"])
+@app.route("/agent/<agent>/", methods=["GET"])
+@app.route("/agent/<agent>/session/<session>", methods=["GET"])
+def chatbot(agent, session=None):
+    data = {"bot_id": agent}
+    logger.info("Fetching agent info for ID %s", agent)
     try:
         with api_request("view_bot", data=data, method="GET") as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
-        logger.exception("Fetch bot info failed.")
+        logger.exception("Fetch agent info failed.")
         return jsonify({"error": "Failed to load agent."}), 400
-    logger.debug("Fetched bot info: %s", result)
+    logger.debug("Fetched agent info: %s", result)
     if result["data"] is None:
-        logger.error("Fetch bot info received an unexpected response.")
+        logger.error("Fetch agent info received an unexpected response.")
         abort(404)
     engine, model = None, None
     if "chat_model" in result["data"]:
@@ -60,7 +101,7 @@ def chatbot(bot, session=None):
     vdb_tools = []
     if "vdb_tools" in result["data"]:
         vdb_tools = result["data"]["vdb_tools"]
-    return render_template("index.html", engine=engine, model=model, search_tools=search_tools, vdb_tools=vdb_tools)
+    return render_template("chatbot.html", engine=engine, model=model, search_tools=search_tools, vdb_tools=vdb_tools)
 
 
 @app.route("/chat", methods=["GET", "POST"])
@@ -121,11 +162,11 @@ def chat():
         return Response(generate(), mimetype="text/event-stream")
 
 
-@app.route("/bot/<bot>/new_session", methods=["GET"])
-def new_session(bot):
-    logger.info("Starting new session for bot ID %s", bot)
+@app.route("/agent/<agent>/new_session", methods=["GET"])
+def new_session(agent):
+    logger.info("Starting new session for agent ID %s", agent)
     try:
-        with api_request("initialize_session", data={"bot_id": bot}) as r:
+        with api_request("initialize_session", data={"bot_id": agent}) as r:
             r.raise_for_status()
             return jsonify(r.json())
     except Exception:
@@ -133,21 +174,21 @@ def new_session(bot):
         return jsonify({"error": "Failed to create session."}), 400
 
 
-@app.route("/bot/<bot>/info", methods=["GET"])
-def bot_info(bot):
-    data = {"bot_id": bot}
-    logger.info("Bot info endpoint called for ID %s", bot)
+@app.route("/agent/<agent>/info", methods=["GET"])
+def agent_info(agent):
+    data = {"bot_id": agent}
+    logger.info("Agent info endpoint called for ID %s", agent)
     try:
         with api_request("view_bot", data=data, method="GET") as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
-        logger.exception("Bot info endpoint fetch failed.")
+        logger.exception("Agent info endpoint fetch failed.")
         return jsonify({"error": "Failed to load agent."}), 400
     if result["data"] is None:
-        logger.error("Bot info endpoint got an unexpected response.")
+        logger.error("Agent info endpoint got an unexpected response.")
         abort(404)
-    logger.debug("Bot endpoint info got response: %s", result)
+    logger.debug("Agent endpoint info got response: %s", result)
     return jsonify(result)
 
 
@@ -235,3 +276,296 @@ def feedback():
         logger.info("Feedback failed to submit.")
         status = "not ok"
     return jsonify({"status": status})
+
+
+def format_str(text: str) -> str:
+    """Replace '\\n\\n' and with <br> and ¶ with '<br>¶'."""
+    def replace_with_br(match):
+        return f'<br>{match.group(0)}'
+
+    pattern = r'\s(\S*¶\S*)'
+    # \s matches any whitespace character
+    # (\S*¶\S*) is a capture group that matches:
+    #   - \S* : zero or more non-whitespace characters
+    #   - ¶ : the paragraph character
+    return re.sub(pattern, replace_with_br, text.replace("\n\n","<br>"))
+
+def mark_keyword(text, keyword):
+    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+    
+    def replace_func(match):
+        return f'<mark>{match.group()}</mark>'
+    
+    return pattern.sub(replace_func, text)
+
+def format_summary(summary):
+    # Split the summary into lines
+    lines = summary.split('\n')
+    
+    # Process each line
+    formatted_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check if the line contains a title (wrapped in asterisks)
+        title_match = re.search(r'\*\*(.*?)\*\*', line)
+        if title_match:
+            # Extract the title
+            title = title_match.group(1)
+            # Replace the entire **title** part with HTML strong tags
+            line = re.sub(r'\*\*.*?\*\*', f'<strong>{title}</strong>', line)
+            # Remove leading dash if present
+            line = re.sub(r'^- ?', '', line)
+        
+        formatted_lines.append(line)
+    
+    # Join the lines with line breaks
+    formatted_content = '<br>'.join(formatted_lines)
+    
+    # Wrap everything in a single paragraph tag
+    return f'<p>{formatted_content}</p>'
+
+
+def generate_source_context(source, index, entities):
+    source_type = source['type']
+    context = {
+        'index': index + 1,
+        'type': source_type,
+        'entities': process_entities(entities),
+        'num_entities': len(entities)
+    }
+
+    if source_type == 'opinion':
+        meta = source['entity']['metadata']
+        context.update({
+            'case_name': truncate_text(meta.get('case_name', ''), 150),
+            'court_name': meta.get('court_name', ''),
+            'url': f"https://www.courtlistener.com/opinion/{meta.get('cluster_id', '')}/{meta.get('slug', '')}",
+            'author_info': get_author_info(meta),
+            'opinion_type': get_opinion_type(meta.get('type', '')),
+            'download_url': meta.get('download_url'),
+            'courtlistener_summary': meta.get('summary'),
+            'ai_summary': markdown(meta.get('ai_summary', '')) if meta.get('ai_summary') else None,
+            'other_dates': meta.get('other_dates')
+        })
+    elif source_type == 'url':
+        meta = source['entity'].get('metadata', {})
+        context.update({
+            'url': source['id'],
+            'source': meta.get('source', 'Web Search Result'),
+            'title': meta.get('title', 'Title Not Found'),
+            'ai_summary': markdown(meta.get('ai_summary', '')) if meta.get('ai_summary') else None
+        })
+    elif source_type == 'file':
+        page_numbers = list({e['metadata']['page_number'] for e in entities if 'page_number' in e['metadata']})
+        context.update({
+            'filename': source['id'],
+            'page_numbers': page_numbers,
+            'file_icon': get_file_icon(source['id'])
+        })
+    
+    return context
+
+def process_entities(entities):
+    processed = []
+    for entity in entities:
+        text = escape(entity['text'])
+        text = text.replace('\n', '<br>')
+        processed.append({
+            'text': text,
+            'page_number': entity['metadata'].get('page_number')
+        })
+    return processed
+
+def get_author_info(meta):
+    author = meta.get('author_name', 'Unknown Author')
+    dates = format_date(meta.get('date_filed'))
+    if meta.get('date_blocked'):
+        dates += f" | Blocked {format_date(meta['date_blocked'])}"
+    return f"{author} | {dates}"
+
+def get_opinion_type(opinion_code):
+    types = {
+        '010combined': 'Combined',
+        '015unamimous': 'Unanimous',
+        '015unaminous': 'Unanimous',
+        '020lead': 'Lead',
+        '025plurality': 'Plurality',
+        '030concurrence': 'Concurrence',
+        '035concurrenceinpart': 'Concurrence in Part',
+        '040dissent': 'Dissent',
+        '050addendum': 'Addendum',
+        '060remittitur': 'Remittitur',
+        '070rehearing': 'Rehearing',
+        '080onthemerits': 'On the Merits',
+        '090onmotiontostrike': 'On Motion to Strike'
+    }
+    return types.get(opinion_code, 'Unknown')
+
+def truncate_text(text, max_length):
+    return (text[:max_length] + '...') if len(text) > max_length else text
+
+def get_file_icon(filename):
+    extension = filename.split('.')[-1].lower()
+    if extension == 'txt':
+        return 'bi-file-text'
+    elif extension in ['doc', 'docx']:
+        return 'bi-file-word'
+    elif extension == 'pdf':
+        return 'bi-file-pdf'
+    else:
+        return 'bi-file-earmark'
+
+def format_date(date_string):
+    year, month, day = date_string.split('-')
+    months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ]
+    return f"{months[int(month) - 1]} {int(day)}, {year}"
+
+def organize_sources(new_sources):
+    source_map = {}
+    
+    for new_source in new_sources:
+        source_id = new_source['id']
+        entity = new_source['entity']
+        
+        if source_id in source_map:
+            # Check for existing entity with same PK
+            existing_entities = source_map[source_id]['entities']
+            if not any(e['pk'] == entity['pk'] for e in existing_entities):
+                existing_entities.append(entity)
+        else:
+            source_map[source_id] = {
+                'source': new_source,
+                'entities': [entity],
+                'original_index': len(source_map)  # Maintain insertion order
+            }
+    
+    # Sort sources by original insertion order
+    sorted_sources = sorted(source_map.values(), key=lambda x: x['original_index'])
+    
+    # Sort entities within each source by their PK
+    for source_data in sorted_sources:
+        source_data['entities'].sort(key=lambda x: x['pk'])
+    
+    return sorted_sources
+
+@app.route('/search-resource-group/<resource_group>', methods=['GET', 'POST'])
+def search(resource_group):
+    if request.method == 'POST':
+        start = time.time()
+        keyword = request.form.get('keyword')
+        semantic = request.form.get('semantic')
+        data = {
+            "resource_group": resource_group,
+            "keyword_query": keyword,
+            "query": semantic,
+            "k": 100
+        }
+        try:
+            with api_request("search_resources", data=data) as r:
+                r.raise_for_status()
+                result = r.json()
+        except Exception:
+            logger.exception("Search endpoint fetch failed.")
+            return jsonify({"error": "Failed to search resource group."}), 400
+        if result["results"] is None:
+            logger.error("Search endpoint got an unexpected response.")
+            return jsonify({"error": "Failed to search resource group."}), 400
+        results = result["results"]
+        # get results_source_count
+        source_ids = set()
+        for result in results:
+            if result["id"] not in source_ids:
+                source_ids.add(result["id"])
+        results_source_count = len(source_ids)
+        organized = organize_sources(results)
+        sources = [
+            generate_source_context(s['source'], i, s['entities'])
+            for i, s in enumerate(organized)
+        ]
+        end = time.time()
+        elapsed = str(round(end - start, 5))
+        return render_template(
+            "search.html",
+            results=sources,
+            results_source_count=results_source_count,
+            form_data=data,
+            elapsed=elapsed,
+        )
+    return render_template("search.html")
+
+@app.route('/create-agent', methods=['GET', 'POST'])
+def create_agent():
+    if request.method == 'POST':
+        # Retrieve core fields
+        system_prompt = request.form.get('system_prompt', '')
+        message_prompt = request.form.get('message_prompt', '')
+        num_search = int(request.form.get('num_search_tools', 1))
+        num_vdb = int(request.form.get('num_vdb_tools', 0))
+        
+        # Build search tools list
+        search_tools = []
+        for i in range(num_search):
+            tool = {
+                "name": request.form.get(f"search_name_{i}", ""),
+                "method": request.form.get(f"search_method_{i}", "dynamic_serpapi"),
+                "prefix": request.form.get(f"search_prefix_{i}", ""),
+                "prompt": request.form.get(f"search_prompt_{i}", "")
+            }
+            search_tools.append(tool)
+        
+        # Build VDB tools list
+        vdb_tools = []
+        for i in range(num_vdb):
+            tool = {
+                "name": request.form.get(f"vdb_name_{i}", ""),
+                "collection_name": request.form.get(f"vdb_collection_{i}", ""),
+                "k": request.form.get(f"vdb_k_{i}", 4),
+                "prompt": request.form.get(f"vdb_prompt_{i}", "")
+            }
+            vdb_tools.append(tool)
+        
+        # Chat model configuration
+        chat_model = {
+            "engine": request.form.get("engine", "openai"),
+            "model": request.form.get("model", "gpt-4o"),
+            "temperature": request.form.get("temperature", 0),
+            "seed": request.form.get("seed", 0)
+        }
+        
+        bot_data = {
+            "message_prompt": message_prompt,
+            "search_tools": search_tools,
+            "vdb_tools": vdb_tools,
+            "chat_model": chat_model
+        }
+
+        if system_prompt:
+            bot_data["system_prompt"] = system_prompt
+
+        try:
+            with api_request("create_bot", data=bot_data) as r:
+                r.raise_for_status()
+                result = r.json()
+        except Exception:
+            logger.exception("Create agent failed.")
+            print(r.text)
+            return jsonify({"error": "Failed to create agent."}), 400
+        logger.debug("Created agent: %s", result)
+        if result["message"] != "Success":
+            logger.error("Create agent received an unexpected response.")
+            flash("Failed to create agent.", "error")
+            return redirect(url_for('create_agent'))
+        if "bot_id" in result:
+            flash(f"Agent created successfully! Agent ID: {result['bot_id']}", "success")
+            flash(f"You can now chat with your agent at /agent/{result['bot_id']}", "info")
+            return redirect(url_for('create_agent'))
+        else:
+            flash("Failed to create agent.", "error")
+            return redirect(url_for('create_agent'))
+    return render_template('create_agent.html')
