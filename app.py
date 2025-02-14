@@ -58,6 +58,16 @@ def index():
     return render_template("index.html", agents=agents, metrics=metrics)
 
 
+@app.route('/signup')
+def signup():
+    # firebase_config = {
+    #     "apiKey": os.environ.get('FIREBASE_API_KEY'),
+    #     "authDomain": os.environ.get('FIREBASE_AUTH_DOMAIN'),
+    #     "projectId": os.environ.get('FIREBASE_PROJECT_ID')
+    # }
+    # return render_template('index.html', firebase_config=firebase_config)
+    return render_template('signup.html')
+
 @app.route("/agents")
 def agents():
     # Example data
