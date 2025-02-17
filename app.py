@@ -181,6 +181,23 @@ def chatbot(agent, session=None):
         vdb_tools = result["data"]["vdb_tools"]
     return render_template("chatbot.html", engine=engine, model=model, search_tools=search_tools, vdb_tools=vdb_tools)
 
+@app.route("/users", methods=["GET"])
+@app.route("/users/", methods=["GET"])
+def users():
+    example_data = [{
+        "id": 1,
+        "name": "Nick",
+        "email": "nick@openprobono.com",
+        "role": "Admin",
+    },
+    {
+        "id": 2,
+        "name": "Arman",
+        "email": "arman@openprobono.com",
+        "role": "User",
+    }]
+    return render_template("users.html", users=example_data)
+
 
 @app.route("/chat", methods=["GET", "POST"])
 def chat():
