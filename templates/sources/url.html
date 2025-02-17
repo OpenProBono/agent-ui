@@ -18,6 +18,10 @@
         <ol class="list-group">
         {% for entity in result.entities %}
         <li class="list-group-item">
+            <p class="card-text"><strong>Match Score</strong>: {{ entity.match_score }}</p>
+            {% if entity.page_number %}
+            <p class="card-text"><strong>Page Number</strong>: {{ entity.page_number }}</p>
+            {% endif %}
             <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">
             {{ entity.text|safe }}
             </div>

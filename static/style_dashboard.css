@@ -1,0 +1,33 @@
+body {
+    font-family: 'DM Sans', 'IBM Plex Sans', sans-serif;
+    font-optical-sizing: auto;
+    background-image: url('../static/images/bg.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+.sidebar {
+    width: 200px;
+    height: 100vh;
+    position: fixed;
+    background-color: #1f1f1f;
+    color: #f8fcfd;
+    padding-top: 20px;
+}
+.sidebar a {
+    color: #f8fcfd;
+    text-decoration: none;
+    padding: 10px 20px;
+    display: block;
+}
+.sidebar a:hover {
+    background-color: #737373;
+}
+.sidebar .active {
+    background-color: #5c28df;
+}
+.main-content {
+    margin-left: 210px;
+    padding: 20px;
+}

@@ -25,6 +25,64 @@ API_URL = os.environ["OPB_API_URL"]
 API_KEY = os.environ["OPB_TEST_API_KEY"]
 HEADERS = {"X-API-KEY": API_KEY}
 
+JURISDICTIONS = [
+    {'display': 'Federal Appellate', 'value': 'us-app'},
+    {'display': 'Federal District', 'value': 'us-dis'},
+    {'display': 'Federal Supreme Court', 'value': 'us-sup'},
+    {'display': 'Federal Special', 'value': 'us-misc'},
+    {'display': 'Alabama', 'value': 'al'},
+    {'display': 'Alaska', 'value': 'ak'},
+    {'display': 'Arizona', 'value': 'az'},
+    {'display': 'Arkansas', 'value': 'ar'},
+    {'display': 'California', 'value': 'ca'},
+    {'display': 'Colorado', 'value': 'co'},
+    {'display': 'Connecticut', 'value': 'ct'},
+    {'display': 'Delaware', 'value': 'de'},
+    {'display': 'District of Columbia', 'value': 'dc'},
+    {'display': 'Florida', 'value': 'fl'},
+    {'display': 'Georgia', 'value': 'ga'},
+    {'display': 'Hawaii', 'value': 'hi'},
+    {'display': 'Idaho', 'value': 'id'},
+    {'display': 'Illinois', 'value': 'il'},
+    {'display': 'Indiana', 'value': 'in'},
+    {'display': 'Iowa', 'value': 'ia'},
+    {'display': 'Kansas', 'value': 'ks'},
+    {'display': 'Kentucky', 'value': 'ky'},
+    {'display': 'Louisiana', 'value': 'la'},
+    {'display': 'Maine', 'value': 'me'},
+    {'display': 'Maryland', 'value': 'md'},
+    {'display': 'Massachusetts', 'value': 'ma'},
+    {'display': 'Michigan', 'value': 'mi'},
+    {'display': 'Minnesota', 'value': 'mn'},
+    {'display': 'Mississippi', 'value': 'ms'},
+    {'display': 'Missouri', 'value': 'mo'},
+    {'display': 'Montana', 'value': 'mt'},
+    {'display': 'Nebraska', 'value': 'ne'},
+    {'display': 'Nevada', 'value': 'nv'},
+    {'display': 'New Hampshire', 'value': 'nh'},
+    {'display': 'New Jersey', 'value': 'nj'},
+    {'display': 'New Mexico', 'value': 'nm'},
+    {'display': 'New York', 'value': 'ny'},
+    {'display': 'North Carolina', 'value': 'nc'},
+    {'display': 'North Dakota', 'value': 'nd'},
+    {'display': 'Ohio', 'value': 'oh'},
+    {'display': 'Oklahoma', 'value': 'ok'},
+    {'display': 'Oregon', 'value': 'or'},
+    {'display': 'Pennsylvania', 'value': 'pa'},
+    {'display': 'Rhode Island', 'value': 'ri'},
+    {'display': 'South Carolina', 'value': 'sc'},
+    {'display': 'South Dakota', 'value': 'sd'},
+    {'display': 'Tennessee', 'value': 'tn'},
+    {'display': 'Texas', 'value': 'tx'},
+    {'display': 'Utah', 'value': 'ut'},
+    {'display': 'Vermont', 'value': 'vt'},
+    {'display': 'Virginia', 'value': 'va'},
+    {'display': 'Washington', 'value': 'wa'},
+    {'display': 'West Virginia', 'value': 'wv'},
+    {'display': 'Wisconsin', 'value': 'wi'},
+    {'display': 'Wyoming', 'value': 'wy'}
+]
+
 def api_request(endpoint, method="POST", data=None, files=None, params=None, timeout=None):
     url = f"{API_URL}/{endpoint}"
     logger.info("Making %s request to /%s", method, endpoint)
@@ -81,7 +139,17 @@ def agents():
 
 @app.route("/resources")
 def resources():
-    return render_template("resources.html")
+    # Example data
+    collections = [
+        {"name": "search_collection_vj1", "created_on": datetime.date.today(), "resource_count": 10000},
+        {"name": "courtlistener", "created_on": datetime.date.today(), "resource_count": 1000000},
+        {"name": "search_collection_gemini", "created_on": datetime.date.today(), "resource_count": 10000},
+    ]
+    resources = [
+        {"name": "helpguide.pdf", "added_on": datetime.date.today(), "collection_count": 2},
+        {"name": "www.google.com", "added_on": datetime.date.today(), "collection_count": 1},
+    ]
+    return render_template("resources.html", collections=collections, resources=resources)
 
 
 @app.route("/agent/<agent>", methods=["GET"])
@@ -301,12 +369,27 @@ def format_str(text: str) -> str:
     return re.sub(pattern, replace_with_br, text.replace("\n\n","<br>"))
 
 def mark_keyword(text, keyword):
-    pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+    # Split the keyword into individual words
+    keywords = keyword.split()
+    
+    # Create a pattern to match the full keyword phrase first
+    phrases_pattern = r'\b' + re.escape(keyword) + r'\b'
+    phrases_compiled = re.compile(phrases_pattern, re.IGNORECASE)
     
     def replace_func(match):
         return f'<mark>{match.group()}</mark>'
     
-    return pattern.sub(replace_func, text)
+    # First, mark the full keyword phrase
+    text = phrases_compiled.sub(replace_func, text)
+    
+    # Create a pattern to match individual words only if they are standalone
+    words_pattern = r'\b' + r'\b|\b'.join(re.escape(word) for word in keywords) + r'\b'
+    words_compiled = re.compile(words_pattern, re.IGNORECASE)
+    
+    # Mark individual words only if the full phrase is not marked
+    text = words_compiled.sub(lambda match: match.group() if f'<mark>{match.group()}</mark>' in text else replace_func(match), text)
+    
+    return text
 
 def format_summary(summary):
     # Split the summary into lines
@@ -332,23 +415,20 @@ def format_summary(summary):
         formatted_lines.append(line)
     
     # Join the lines with line breaks
-    formatted_content = '<br>'.join(formatted_lines)
-    
-    # Wrap everything in a single paragraph tag
-    return f'<p>{formatted_content}</p>'
+    return '<br>'.join(formatted_lines)
 
 
-def generate_source_context(source, index, entities):
+def generate_source_context(source, index, entities, keyword=None):
     source_type = source['type']
     context = {
         'index': index + 1,
         'type': source_type,
-        'entities': process_entities(entities),
+        'entities': process_entities(entities, keyword=keyword),
         'num_entities': len(entities)
     }
 
     if source_type == 'opinion':
-        meta = source['entity']['metadata']
+        meta = entities[0]['metadata']
         context.update({
             'case_name': truncate_text(meta.get('case_name', ''), 150),
             'court_name': meta.get('court_name', ''),
@@ -361,7 +441,7 @@ def generate_source_context(source, index, entities):
             'other_dates': meta.get('other_dates')
         })
     elif source_type == 'url':
-        meta = source['entity'].get('metadata', {})
+        meta = entities[0].get('metadata', {})
         context.update({
             'url': source['id'],
             'source': meta.get('source', 'Web Search Result'),
@@ -378,15 +458,20 @@ def generate_source_context(source, index, entities):
     
     return context
 
-def process_entities(entities):
+def process_entities(entities, keyword=None):
     processed = []
     for entity in entities:
         text = escape(entity['text'])
+        if keyword:
+            text = mark_keyword(text, keyword)
         text = text.replace('\n', '<br>')
-        processed.append({
+        processed_entity = {
             'text': text,
-            'page_number': entity['metadata'].get('page_number')
-        })
+            'match_score': round(max([0, (2 - entity['distance']) / 2]), 8)
+        }
+        if 'page_number' in entity['metadata']:
+            processed_entity['page_number'] = entity['metadata']['page_number']
+        processed.append(processed_entity)
     return processed
 
 def get_author_info(meta):
@@ -442,6 +527,7 @@ def organize_sources(new_sources):
     for new_source in new_sources:
         source_id = new_source['id']
         entity = new_source['entity']
+        del new_source['entity']
         
         if source_id in source_map:
             # Check for existing entity with same PK
@@ -464,38 +550,42 @@ def organize_sources(new_sources):
     
     return sorted_sources
 
-@app.route('/search-resource-group/<resource_group>', methods=['GET', 'POST'])
-def search(resource_group):
+@app.route('/search-collection/<collection>', methods=['GET', 'POST'])
+def search(collection):
     if request.method == 'POST':
         start = time.time()
         keyword = request.form.get('keyword')
         semantic = request.form.get('semantic')
+        jurisdictions = request.form.getlist('jurisdictions')
+        after_date = request.form.get('after_date')
+        before_date = request.form.get('before_date')
         data = {
-            "resource_group": resource_group,
-            "keyword_query": keyword,
+            "collection": collection,
             "query": semantic,
             "k": 100
         }
+        if keyword:
+            data["keyword_query"] = keyword
+        if jurisdictions and not len(jurisdictions) == len(JURISDICTIONS):
+            data["jurisdictions"] = jurisdictions
+        if after_date:
+            data["after_date"] = after_date
+        if before_date:
+            data["before_date"] = before_date
         try:
-            with api_request("search_resources", data=data) as r:
+            with api_request("search_collection", data=data) as r:
                 r.raise_for_status()
                 result = r.json()
         except Exception:
             logger.exception("Search endpoint fetch failed.")
-            return jsonify({"error": "Failed to search resource group."}), 400
+            return jsonify({"error": "Failed to search collection."}), 400
         if result["results"] is None:
             logger.error("Search endpoint got an unexpected response.")
-            return jsonify({"error": "Failed to search resource group."}), 400
+            return jsonify({"error": "Failed to search collection."}), 400
         results = result["results"]
-        # get results_source_count
-        source_ids = set()
-        for result in results:
-            if result["id"] not in source_ids:
-                source_ids.add(result["id"])
-        results_source_count = len(source_ids)
         organized = organize_sources(results)
         sources = [
-            generate_source_context(s['source'], i, s['entities'])
+            generate_source_context(s['source'], i, s['entities'], keyword=keyword)
             for i, s in enumerate(organized)
         ]
         end = time.time()
@@ -503,11 +593,42 @@ def search(resource_group):
         return render_template(
             "search.html",
             results=sources,
-            results_source_count=results_source_count,
+            results_count=len(results),
             form_data=data,
             elapsed=elapsed,
+            jurisdictions=JURISDICTIONS,
         )
-    return render_template("search.html")
+    return render_template("search.html", jurisdictions=JURISDICTIONS)
+
+@app.route("/resource_count/<collection_name>")
+def get_resource_count(collection_name) -> int:
+    try:
+        with api_request(f"resource_count/{collection_name}", method="GET", timeout=45) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Resource count endpoint got an unexpected response.")
+        return {"message": "Failure: exception in request or bad response code"}
+    if "resource_count" in result:
+        return {"message": "Success", "resource_count": result["resource_count"]}
+    return {"message": "Failure: no resource count found"}
+
+
+@app.route("/summary/<resource_id>")
+def fetch_summary(resource_id):
+    params = {"resource_id": resource_id}
+    try:
+        with api_request("summary", method="GET", params=params, timeout=30) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Summary endpoint got an unexpected response.")
+        return {"message": "Failure: exception in request or bad response code"}
+    if "result" not in result:
+        return {"message": "Failure: no summary found"}
+    summary = result["result"]
+    return {"message": "Success", "summary": format_summary(summary)}
+
 
 @app.route('/create-agent', methods=['GET', 'POST'])
 def create_agent():

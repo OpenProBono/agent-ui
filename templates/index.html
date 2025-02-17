@@ -8,37 +8,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.png">
+    <link rel="stylesheet" href="/static/style_dashboard.css">
     <style>
-        body {
-            font-family: 'DM Sans', 'IBM Plex Sans', sans-serif;
-            font-optical-sizing: auto;
-            background-image: url('../static/images/bg.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }
-        .sidebar {
-            width: 200px;
-            height: 100vh;
-            position: fixed;
-            background-color: #1f1f1f;
-            color: #f8fcfd;
-            padding-top: 20px;
-        }
-        .sidebar a {
-            color: #f8fcfd;
-            text-decoration: none;
-            padding: 10px 20px;
-            display: block;
-        }
-        .sidebar a:hover {
-            background-color: #737373;
-        }
-        .main-content {
-            margin-left: 210px;
-            padding: 20px;
-        }
         .card-header {
             font-weight: bold;
             background-color: #00c9d2;
@@ -54,7 +25,7 @@
 <body>
     <!-- Sidebar -->
     <div class="sidebar">
-        <h5 class="text-center">OpenProBono</h5>
+        <h5 class="text-center mb-3">OpenProBono</h5>
         <a href="/dashboard" class="active">Dashboard</a>
         <a href="/agents">Agents</a>
         <a href="/resources">Resources</a>

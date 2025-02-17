@@ -10,18 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.png">
+    <link rel="stylesheet" href="/static/style_dashboard.css">
     <style>
-        body {
-            
-            font-family: "DM Sans", sans-serif;
-            font-optical-sizing: auto;
-            background-image: url('/static/images/bg.png');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }
-
         .dots::after {
             display: inline-block;
             animation: ellipsis 1s infinite;
@@ -29,7 +19,6 @@
             width: 1em;
             text-align: left;
         }
-
         @keyframes ellipsis {
             0% {
                 content: "";
@@ -48,7 +37,33 @@
 </head>
 <body>
     <div class="container mt-4">
-        <h1 class="mb-4">Resource Group Search</h1>
+        <h1 class="mb-4">Collection Search</h1>
+        <div class="feedback-success-alert alert alert-success" role="alert" style="display:none;">Feedback submitted successfully! Thank you for your contribution.</div>
+        <div class="feedback-failed-alert alert alert-danger" role="alert" style="display:none;">An error occurred while submitting your feedback.</div>
+        <p>
+            <a class="btn btn-secondary" data-bs-toggle="collapse" href="#howToUse" role="button" aria-expanded="false" aria-controls="howToUse">
+                About this tool
+            </a>
+        </p>
+        <div class="collapse" id="howToUse">
+            <div class="card card-body">
+                <p>Search by semantics and keywords. A semantic query is required.</p>
+                <br>
+                <p>Semantic search looks for similar <i>meaning</i> to your query, and keyword search looks for <i>exact</i> matches of the individual words in your query.</p>
+                <br>
+                <p>Opinions are provided by <a href="https://www.courtlistener.com/">CourtListener</a>.</p>
+                <br>
+                <h3>Example</h3>
+                <br>
+                <p>Say you want to look for cases that cite the <a href="https://en.wikipedia.org/wiki/Merchant_Marine_Act_of_1920">Jones Act</a>. A semantic search for "Jones Act" may return decent results, but it's not an ideal semantic query.</p>
+                <br>           
+                <p>Semantic search compares the <i>meaning</i> of your query with results, not the exact words. This means your query should be a <i>concept</i>, <i>idea</i>, or <i>definition</i>. For a named term or entity, this is usually preferable to the name itself. So, if you want to search for the Jones Act applied to workers' compensation, a semantic search for "seaman workers compensation" returns more accurate results. However, the results may not always explicitly mention the term "Jones Act."</p>
+                <br>
+                <p>A more powerful method is to <strong>combine</strong> semantic and keyword queries in a single search. A keyword search for "Jones Act" and a semantic search for "seaman workers compensation" returns opinions that explicitly mention the Act <i>and</i> are related to workers compensation.</p>
+            </div>
+            <br>
+        </div>
+        <h6 id="resource-count">Please wait a minute<span class="dots"></span></h6>
         <form id="searchForm" method="POST"></form>
         <div class="row mb-3">
             <div class="col-md-5">
@@ -61,11 +76,40 @@
                 <button type="submit" class="btn btn-primary" id="searchButton" form="searchForm">Search</button>
             </div>
         </div>
-        {% if results and results_source_count and elapsed %}
-            <h6>Retrieved {{ results|length }} excerpts from {{ results_source_count }} sources in {{ elapsed }} seconds.</h6>
+        {% if results and results_count and elapsed %}
+            <h6>Retrieved {{ results_count }} excerpt{{ 's' if results_count > 1 }} from {{ results|length }} source{{ 's' if results|length > 1 }} in {{ elapsed }} seconds.</h6>
         {% endif %}
         <div class="row">
-            <div>
+            <div class="col-md-3">
+                <div id="collapseTrigger" class="h4" style="cursor: pointer;">Filters <i id="collapseIcon" class="bi bi-chevron-down"></i></div>
+                <div id="collapseContent">
+                    <div class="mb-3">
+                        <label for="after_date" class="form-label">After Date</label>
+                        <input type="date" class="form-control" name="after_date" id="after_date" value="{{ form_data.after_date if form_data else '' }}" form="searchForm">
+                    </div>
+                    <div class="mb-3">
+                        <label for="before_date" class="form-label">Before Date</label>
+                        <input type="date" class="form-control" name="before_date" id="before_date" value="{{ form_data.before_date if form_data else '' }}" form="searchForm">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Jurisdiction</label>
+                        <div class="mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary me-2" id="checkAllJurisdictions">Check All</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearAllJurisdictions">Clear All</button>
+                        </div>
+                        {% for jurisdiction in jurisdictions %}
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="jurisdictions" value="{{ jurisdiction.value }}" id="jurisdiction-{{ loop.index }}" form="searchForm" 
+                                {% if not form_data or (form_data and jurisdiction.value in form_data.jurisdictions) or (form_data and not form_data.jurisdictions) %}checked{% endif %}>
+                            <label class="form-check-label" for="jurisdiction-{{ loop.index }}">
+                                {{ jurisdiction.display }}
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-9">
                 <h4>Results</h4>
                 {% if results %}
                     {% for result in results %}
@@ -90,7 +134,133 @@
             </div>
         </div>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // disable search button until server responds
+            document.getElementById('searchButton').disabled = true;
+            
+            // Extract collection name from URL path
+            const collectionName = window.location.pathname.split('/').pop();
+            
+            // call get_resource_count() endpoint with collection parameter
+            fetch(`/resource_count/${collectionName}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data["message"] == "Success") {
+                        document.getElementById('resource-count').innerHTML = `There are currently ${data["resource_count"].toLocaleString()} resources indexed.`;
+                        document.getElementById('searchButton').disabled = false;
+                    } else {
+                        document.getElementById('resource-count').innerHTML = `Unable to index resources.`;
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('resource-count').innerHTML = `Unable to index resources.`;
+                });
+
+            // Get summary functionality
+            document.querySelectorAll('.get-summary').forEach(button => {
+                button.addEventListener('click', function() {
+                    const resourceId = this.dataset.id;
+                    const summaryDiv = document.querySelector('.summary-' + resourceId);
+                    const allButtons = document.querySelectorAll('.' + resourceId);
+
+                    allButtons.forEach(btn => {
+                        btn.disabled = true;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Summarizing...';
+                    });
+
+                    fetch("/summary/" + resourceId)
+                        .then(response => response.json())
+                        .then(data => {
+                            summaryDiv.innerHTML = '<p class="card-text"><strong>AI summary</strong>: ' + data["summary"] + '</p>';
+                            allButtons.forEach(btn => btn.remove());
+                        })
+                        .catch(() => {
+                            allButtons.forEach(btn => {
+                                btn.disabled = false;
+                                btn.textContent = 'Get Summary';
+                            });
+                            summaryDiv.innerHTML = 'Error fetching summary. Please try again.';
+                        });
+                });
+            });
+
+            // collapse filters
+            let filtersCollapsed = false;
+            document.getElementById("collapseTrigger").addEventListener('click', function() {
+                const collapseIcon = document.getElementById("collapseIcon");
+                const collapseContent = document.getElementById("collapseContent");
+                
+                if (!filtersCollapsed) {
+                    collapseIcon.classList.replace("bi-chevron-down", "bi-chevron-up");
+                    collapseContent.style.display = "none";
+                } else {
+                    collapseIcon.classList.replace("bi-chevron-up", "bi-chevron-down");
+                    collapseContent.style.display = "block";
+                }
+                filtersCollapsed = !filtersCollapsed;
+            });
+
+            // Check/Clear All Jurisdictions
+            document.getElementById('checkAllJurisdictions').addEventListener('click', function() {
+                document.querySelectorAll('.form-check-input').forEach(input => input.checked = true);
+            });
+
+            document.getElementById('clearAllJurisdictions').addEventListener('click', function() {
+                document.querySelectorAll('.form-check-input').forEach(input => input.checked = false);
+            });
+
+            // Loading animation for the search button
+            document.getElementById("searchForm").addEventListener('submit', function(event) {
+                event.preventDefault();
+                const button = document.getElementById("searchButton");
+                button.disabled = true;
+                button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...';
+                event.target.submit();
+            });
+            
+            // Feedback
+            document.querySelectorAll('[id^="feedbackForm"]').forEach(form => {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const opinionId = this.id.replace('feedbackForm', '');
+                    const feedbackText = document.getElementById(`feedbackText${opinionId}`).value;
+                    
+                    fetch('/submit-feedback', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            opinionId: opinionId,
+                            feedback: feedbackText
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(() => {
+                        const modal = document.getElementById(`feedbackModal${opinionId}`);
+                        const modalInstance = bootstrap.Modal.getInstance(modal);
+                        modalInstance.hide();
+                        
+                        document.querySelector(".feedback-success-alert").style.display = 'block';
+                        setTimeout(() => {
+                            document.querySelector(".feedback-success-alert").style.display = 'none';
+                        }, 10000);
+                    })
+                    .catch(() => {
+                        const modal = document.getElementById(`feedbackModal${opinionId}`);
+                        const modalInstance = bootstrap.Modal.getInstance(modal);
+                        modalInstance.hide();
+                        
+                        document.querySelector(".feedback-failed-alert").style.display = 'block';
+                        setTimeout(() => {
+                            document.querySelector(".feedback-failed-alert").style.display = 'none';
+                        }, 10000);
+                    });
+                });
+            });
+        });
+    </script>
 </body>
 </html>
