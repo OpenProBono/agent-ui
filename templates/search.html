@@ -64,7 +64,7 @@
             <br>
         </div>
         <h6 id="resource-count">Please wait a minute<span class="dots"></span></h6>
-        <form id="searchForm" method="POST"></form>
+        <form id="searchForm" method="GET"></form>
         <div class="row mb-3">
             <div class="col-md-5">
                 <input required type="text" class="form-control" name="semantic" placeholder="Semantic Search" value="{{ form_data.query if form_data else '' }}" form="searchForm">
@@ -76,8 +76,8 @@
                 <button type="submit" class="btn btn-primary" id="searchButton" form="searchForm">Search</button>
             </div>
         </div>
-        {% if results and results_count and elapsed %}
-            <h6>Retrieved {{ results_count }} excerpt{{ 's' if results_count > 1 }} from {{ results|length }} source{{ 's' if results|length > 1 }} in {{ elapsed }} seconds.</h6>
+        {% if elapsed %}
+            <h6>Retrieved {{ results_count }} excerpt{{ 's' if results_count > 1 or results_count == 0 }} from {{ results|length }} source{{ 's' if results|length > 1 or results|length == 0 }} in {{ elapsed }} seconds.</h6>
         {% endif %}
         <div class="row">
             <div class="col-md-3">
@@ -217,7 +217,44 @@
                 const button = document.getElementById("searchButton");
                 button.disabled = true;
                 button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...';
-                event.target.submit();
+
+                // Get the form data
+                const formData = new FormData(this);
+                const params = new URLSearchParams();
+                
+                // Always include semantic search query
+                const semantic = formData.get('semantic');
+                if (semantic) {
+                    params.append('semantic', semantic);
+                }
+                
+                // Only include keyword if non-empty
+                const keyword = formData.get('keyword');
+                if (keyword) {
+                    params.append('keyword', keyword);
+                }
+                
+                // Only include dates if non-empty
+                const afterDate = formData.get('after_date');
+                if (afterDate) {
+                    params.append('after_date', afterDate);
+                }
+                
+                const beforeDate = formData.get('before_date');
+                if (beforeDate) {
+                    params.append('before_date', beforeDate);
+                }
+                
+                // Only include jurisdictions if not all are selected
+                const selectedJurisdictions = formData.getAll('jurisdictions');
+                const allJurisdictionCheckboxes = document.querySelectorAll('input[name="jurisdictions"]');
+                if (selectedJurisdictions.length < allJurisdictionCheckboxes.length) {
+                    selectedJurisdictions.forEach(j => params.append('jurisdictions', j));
+                }
+                
+                // Navigate to the URL with search parameters
+                const queryString = params.toString();
+                window.location.href = window.location.pathname + (queryString ? '?' + queryString : '');
             });
             
             // Feedback

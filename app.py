@@ -567,55 +567,55 @@ def organize_sources(new_sources):
     
     return sorted_sources
 
-@app.route('/search-collection/<collection>', methods=['GET', 'POST'])
+@app.route('/search-collection/<collection>', methods=['GET'])
 def search(collection):
-    if request.method == 'POST':
-        start = time.time()
-        keyword = request.form.get('keyword')
-        semantic = request.form.get('semantic')
-        jurisdictions = request.form.getlist('jurisdictions')
-        after_date = request.form.get('after_date')
-        before_date = request.form.get('before_date')
-        data = {
-            "collection": collection,
-            "query": semantic,
-            "k": 100
-        }
-        if keyword:
-            data["keyword_query"] = keyword
-        if jurisdictions and not len(jurisdictions) == len(JURISDICTIONS):
-            data["jurisdictions"] = jurisdictions
-        if after_date:
-            data["after_date"] = after_date
-        if before_date:
-            data["before_date"] = before_date
-        try:
-            with api_request("search_collection", data=data) as r:
-                r.raise_for_status()
-                result = r.json()
-        except Exception:
-            logger.exception("Search endpoint fetch failed.")
-            return jsonify({"error": "Failed to search collection."}), 400
-        if result["results"] is None:
-            logger.error("Search endpoint got an unexpected response.")
-            return jsonify({"error": "Failed to search collection."}), 400
-        results = result["results"]
-        organized = organize_sources(results)
-        sources = [
-            generate_source_context(s['source'], i, s['entities'], keyword=keyword)
-            for i, s in enumerate(organized)
-        ]
-        end = time.time()
-        elapsed = str(round(end - start, 5))
-        return render_template(
-            "search.html",
-            results=sources,
-            results_count=len(results),
-            form_data=data,
-            elapsed=elapsed,
-            jurisdictions=JURISDICTIONS,
-        )
-    return render_template("search.html", jurisdictions=JURISDICTIONS)
+    start = time.time()
+    semantic = request.args.get('semantic')
+    if not semantic:
+        return render_template("search.html", jurisdictions=JURISDICTIONS)
+    keyword = request.args.get('keyword')
+    jurisdictions = request.args.getlist('jurisdictions')
+    after_date = request.args.get('after_date')
+    before_date = request.args.get('before_date')
+    data = {
+        "collection": collection,
+        "query": semantic,
+        "k": 100
+    }
+    if keyword:
+        data["keyword_query"] = keyword
+    if jurisdictions and not len(jurisdictions) == len(JURISDICTIONS):
+        data["jurisdictions"] = jurisdictions
+    if after_date:
+        data["after_date"] = after_date
+    if before_date:
+        data["before_date"] = before_date
+    try:
+        with api_request("search_collection", data=data) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Search endpoint fetch failed.")
+        return jsonify({"error": "Failed to search collection."}), 400
+    if result["results"] is None:
+        logger.error("Search endpoint got an unexpected response.")
+        return jsonify({"error": "Failed to search collection."}), 400
+    results = result["results"]
+    organized = organize_sources(results)
+    sources = [
+        generate_source_context(s['source'], i, s['entities'], keyword=keyword)
+        for i, s in enumerate(organized)
+    ]
+    end = time.time()
+    elapsed = str(round(end - start, 5))
+    return render_template(
+        "search.html",
+        results=sources,
+        results_count=len(results),
+        form_data=data,
+        elapsed=elapsed,
+        jurisdictions=JURISDICTIONS,
+    )
 
 @app.route("/resource_count/<collection_name>")
 def get_resource_count(collection_name) -> int:
