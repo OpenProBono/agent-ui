@@ -83,19 +83,12 @@ JURISDICTIONS = [
     {'display': 'Wyoming', 'value': 'wy'}
 ]
 
-def api_request(endpoint, method="POST", data=None, files=None, params=None, timeout=None):
+def api_request(endpoint, method="POST", data=None, files=None, params=None, timeout=None, stream=None):
     url = f"{API_URL}/{endpoint}"
     logger.info("Making %s request to /%s", method, endpoint)
     if method == "GET":
-        return requests.get(url, headers=HEADERS, params=data, timeout=timeout)
-    else:
-        return requests.post(url, headers=HEADERS, json=data, files=files, params=params, timeout=timeout)
-
-
-def api_request_stream(endpoint, data=None):
-    url = f"{API_URL}/{endpoint}"
-    logger.info("Making streaming request to %s", endpoint)
-    return requests.post(url, headers=HEADERS, json=data, stream=True)
+        return requests.get(url, headers=HEADERS, params=data, timeout=timeout, stream=stream)
+    return requests.post(url, headers=HEADERS, json=data, files=files, params=params, timeout=timeout, stream=stream)
 
 
 @app.route("/")
@@ -179,7 +172,17 @@ def chatbot(agent, session=None):
     vdb_tools = []
     if "vdb_tools" in result["data"]:
         vdb_tools = result["data"]["vdb_tools"]
-    return render_template("chatbot.html", engine=engine, model=model, search_tools=search_tools, vdb_tools=vdb_tools)
+    # name is the agent name with capitalized first letters
+    # and underscores replaced with spaces
+    name = ' '.join(word.capitalize() for word in agent.split('_'))
+    return render_template(
+        "chatbot.html",
+        engine=engine,
+        model=model,
+        search_tools=search_tools,
+        vdb_tools=vdb_tools,
+        name=name,
+    )
 
 @app.route("/users", methods=["GET"])
 @app.route("/users/", methods=["GET"])
@@ -239,7 +242,7 @@ def chat():
 
         def generate():
             try:
-                with api_request_stream("chat_session_stream", data=request_data) as r:
+                with api_request("chat_session_stream", data=request_data, stream=True) as r:
                     r.raise_for_status()
                     for line in r.iter_lines(decode_unicode=True):
                         if line:
@@ -441,11 +444,10 @@ def generate_source_context(source, index, entities, keyword=None):
         'index': index + 1,
         'type': source_type,
         'entities': process_entities(entities, keyword=keyword),
-        'num_entities': len(entities)
+        'num_entities': len(entities),
     }
-
+    meta = entities[0]['metadata']
     if source_type == 'opinion':
-        meta = entities[0]['metadata']
         context.update({
             'case_name': truncate_text(meta.get('case_name', ''), 150),
             'court_name': meta.get('court_name', ''),
@@ -458,21 +460,27 @@ def generate_source_context(source, index, entities, keyword=None):
             'other_dates': meta.get('other_dates')
         })
     elif source_type == 'url':
-        meta = entities[0].get('metadata', {})
         context.update({
             'url': source['id'],
-            'source': meta.get('source', 'Web Search Result'),
+            'source': meta.get('source', source['id']),
             'title': meta.get('title', 'Title Not Found'),
-            'ai_summary': markdown(meta.get('ai_summary', '')) if meta.get('ai_summary') else None
+            'ai_summary': markdown(meta.get('ai_summary', '')) if meta.get('ai_summary') else None,
         })
+        epoch_time = meta.get('timestamp', None)
+        if epoch_time:
+            date_object = datetime.datetime.fromtimestamp(meta.get('timestamp'), tz=datetime.UTC)
+            formatted_date = date_object.strftime('%Y-%m-%d')
+            context['timestamp'] = format_date(formatted_date)
     elif source_type == 'file':
-        page_numbers = list({e['metadata']['page_number'] for e in entities if 'page_number' in e['metadata']})
         context.update({
             'filename': source['id'],
-            'page_numbers': page_numbers,
             'file_icon': get_file_icon(source['id'])
         })
-    
+        epoch_time = meta.get('timestamp', None)
+        if epoch_time:
+            date_object = datetime.datetime.fromtimestamp(meta.get('timestamp'), tz=datetime.UTC)
+            formatted_date = date_object.strftime('%Y-%m-%d')
+            context['timestamp'] = format_date(formatted_date)
     return context
 
 def process_entities(entities, keyword=None):
@@ -482,10 +490,9 @@ def process_entities(entities, keyword=None):
         if keyword:
             text = mark_keyword(text, keyword)
         text = text.replace('\n', '<br>')
-        processed_entity = {
-            'text': text,
-            'match_score': round(max([0, (2 - entity['distance']) / 2]), 8)
-        }
+        processed_entity = {'text': text}
+        if 'distance' in entity:
+            processed_entity['match_score'] = round(max([0, (2 - entity['distance']) / 2]), 8)
         if 'page_number' in entity['metadata']:
             processed_entity['page_number'] = entity['metadata']['page_number']
         processed.append(processed_entity)
@@ -567,12 +574,14 @@ def organize_sources(new_sources):
     
     return sorted_sources
 
-@app.route('/search-collection/<collection>', methods=['GET'])
+@app.route('/search/<collection>', methods=['GET'])
 def search(collection):
     start = time.time()
+    if not collection:
+        abort(404)
     semantic = request.args.get('semantic')
     if not semantic:
-        return render_template("search.html", jurisdictions=JURISDICTIONS)
+        return render_template("search.html", collection=collection, jurisdictions=JURISDICTIONS)
     keyword = request.args.get('keyword')
     jurisdictions = request.args.getlist('jurisdictions')
     after_date = request.args.get('after_date')
@@ -584,7 +593,7 @@ def search(collection):
     }
     if keyword:
         data["keyword_query"] = keyword
-    if jurisdictions and not len(jurisdictions) == len(JURISDICTIONS):
+    if jurisdictions and len(jurisdictions) != len(JURISDICTIONS):
         data["jurisdictions"] = jurisdictions
     if after_date:
         data["after_date"] = after_date
@@ -610,11 +619,63 @@ def search(collection):
     elapsed = str(round(end - start, 5))
     return render_template(
         "search.html",
+        collection=collection,
         results=sources,
         results_count=len(results),
         form_data=data,
         elapsed=elapsed,
         jurisdictions=JURISDICTIONS,
+    )
+
+@app.route('/manage/<collection>', methods=['GET'])
+def manage(collection):
+    start = time.time()
+    if not collection:
+        abort(404)
+    keyword = request.args.get("keyword")
+    jurisdictions = request.args.getlist('jurisdictions')
+    after_date = request.args.get('after_date')
+    before_date = request.args.get('before_date')
+    page = request.args.get("page", 1, int)
+    per_page = request.args.get("per_page", 50, int)
+    params = {"page": page, "per_page": per_page}
+    data = {"collection": collection}
+    if keyword:
+        data["keyword_query"] = keyword
+    if jurisdictions and len(jurisdictions) != len(JURISDICTIONS):
+        data["jurisdictions"] = jurisdictions
+    if after_date:
+        data["after_date"] = after_date
+    if before_date:
+        data["before_date"] = before_date
+    try:
+        with api_request("browse_collection", data=data, params=params) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Manage endpoint fetch failed.")
+        return jsonify({"error": "Failed to manage collection."}), 400
+    if result["results"] is None:
+        logger.error("Manage endpoint got an unexpected response.")
+        return jsonify({"error": "Failed to manage collection."}), 400
+    results = result["results"]
+    organized = organize_sources(results)
+    sources = [
+        generate_source_context(s['source'], i, s['entities'], keyword=keyword)
+        for i, s in enumerate(organized)
+    ]
+    end = time.time()
+    elapsed = str(round(end - start, 5))
+    return render_template(
+        "manage_collection.html",
+        collection=collection,
+        results=sources,
+        results_count=len(results),
+        form_data=data,
+        elapsed=elapsed,
+        jurisdictions=JURISDICTIONS,
+        page=page,
+        per_page=per_page,
     )
 
 @app.route("/resource_count/<collection_name>")

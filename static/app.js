@@ -635,7 +635,7 @@ function handleStreamEvent(data) {
             break;
         case 'tool_call':
             clearLoaderMessage();
-            let argsDict = JSON.parse(data.args.replaceAll('\'', '"'));
+            let argsDict = new Function('return ' + data.args)();
             let toolContent = `<h5>Tool Call</h5>
             <p><strong>Name:</strong> ${data.name}</p>
             <p><strong>Arguments:</strong></p>
@@ -1112,9 +1112,13 @@ async function switchSession(sessionId) {
         const response = await fetch(`/agent/${currentBotId}/info`);
         if (response.ok) {
             const result = await response.json();
+            const name = document.getElementById('name');
             const provider = document.getElementById('provider');
             const model = document.getElementById('model');
             const tools = document.getElementById('tools');
+            // Capitalize the first letter of each word and replace underscores with spaces
+            const displayName = currentBotId.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+            name.innerHTML = `<strong>Name:</strong> ${displayName}`;
             provider.innerHTML = `<strong>Provider:</strong> ${result.data.chat_model.engine}`;
             model.innerHTML = `<strong>Model:</strong> ${result.data.chat_model.model}`;
             tools.innerHTML = '';
@@ -1248,8 +1252,8 @@ function displaySessionsSidebar() {
                     <li id="session-${session.id}" class="conversation-item">
                         <a href="#" class="text-decoration-none text-truncate d-block" 
                             onclick="switchSession('${session.id}'); return false;"
-                            title="${session.title}">
-                            ${session.title}
+                            title="${session.title ? session.title : "Untitled Chat"}">
+                            ${session.title ? session.title : "Untitled Chat"}
                         </a>
                     </li>
                 `).join('')}

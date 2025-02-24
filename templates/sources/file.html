@@ -1,23 +1,29 @@
-<div class="card-header">
-    <i class="fs-2 {{ file_icon }}-fill"></i>
+<div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger{{ result.index }}" style="cursor:pointer;">
+    <i class="fs-2 {{ result.file_icon }}-fill"></i>
     <div style="flex: 1; margin: 0 15px;">
-      <h5>{{ index }}. {{ filename }}</h5>
-      {% if page_numbers %}
-      <h6 class="card-subtitle mb-0">Page{{ 's' if page_numbers|length > 1 }} {{ page_numbers|join(', ') }}</h6>
-      {% endif %}
+        <h5>{{ result.index }}. {{ result.filename }}</h5>
     </div>
-  </div>
-  <div class="card-body">
-    <div class="mt-2">
-      <p class="card-text"><strong>Excerpt{{ 's' if num_entities > 1 }} ({{ num_entities }})</strong>:</p>
-      <ol class="list-group">
-        {% for entity in entities %}
-        <li class="list-group-item">
-          <div class="p-2 excerpt-content">
-            {{ entity.text|safe }}
-          </div>
-        </li>
-        {% endfor %}
-      </ol>
+    <i id="collapseIcon{{ result.index }}" class="bi bi-chevron-up"></i>
+</div>
+<div id="collapseContent{{ result.index }}" style="display:none;">
+    <div class="card-body">
+        <div class="mt-2">
+            <p class="card-text"><strong>Excerpt{{ 's' if result.num_entities > 1 }} ({{ result.num_entities }})</strong>:</p>
+            <ol class="list-group">
+                {% for entity in result.entities %}
+                <li class="list-group-item">
+                    {% if entity.match_score %}
+                    <p class="card-text"><strong>Match Score</strong>: {{ entity.match_score }}</p>
+                    {% endif %}
+                    {% if entity.page_number %}
+                    <p class="card-text"><strong>Page Number</strong>: {{ entity.page_number }}</p>
+                    {% endif %}
+                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">
+                        {{ entity.text|safe }}
+                    </div>
+                </li>
+                {% endfor %}
+            </ol>
+        </div>
     </div>
 </div>

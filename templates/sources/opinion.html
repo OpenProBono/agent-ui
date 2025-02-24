@@ -1,43 +1,41 @@
-<div class="card-header d-flex justify-content-between align-items-center">
+<div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger{{ result.index }}" style="cursor:pointer;">
     <i class="fs-2 bi bi-briefcase-fill"></i>
     <div style="flex: 1; margin: 0 15px;">
-      <h5>{{ result.index }}. {{ result.case_name }}</h5>
+        <h5>{{ result.index }}. {{ result.case_name }}</h5>
     </div>
-  </div>
-  <div class="card-body">
-    <h6 class="card-subtitle mb-2">{{ result.court_name }}</h6>
-    <h6 class="card-subtitle mb-2 text-muted">{{ result.author_info }}</h6>
-    <p class="card-text"><strong>Opinion Type</strong>: {{ result.opinion_type }}</p>
-    <p class="card-text"><strong>CourtListener Link</strong>: <a href="{{ result.url }}">{{ result.url }}</a></p>
-    
-    {% if result.download_url %}
-    <p class="card-text"><strong>Original Link</strong>: <a href="{{ result.download_url }}">{{ result.download_url }}</a></p>
-    {% endif %}
-    
-    {% if result.summary %}
-    <p class="card-text"><strong>CourtListener Summary</strong>:</p>
-    <div class="ms-2">{{ result.summary | safe }}</div>
-    {% endif %}
-    
-    {% if result.ai_summary %}
-    <p class="card-text"><strong>AI Summary</strong>:</p>
-    <div class="ms-2 ai-summary summary-{{ result.opinion_id }}">{{ result.ai_summary|safe }}</div>
-    {% endif %}
-    
-    {% if result.other_dates %}
-    <p class="card-text"><strong>Other Dates</strong>: {{ result.other_dates }}</p>
-    {% endif %}
-    
-    <div class="mt-2">
-      <p class="card-text"><strong>Excerpt{{ 's' if result.num_entities > 1 }} ({{ result.num_entities }})</strong>:</p>
-      <ol class="list-group">
-        {% for entity in result.entities %}
-        <li class="list-group-item">
-          <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">
-            {{ entity.text|safe }}
-          </div>
-        </li>
-        {% endfor %}
-      </ol>
+    <i id="collapseIcon{{ result.index }}" class="bi bi-chevron-up"></i>
+</div>
+<div id="collapseContent{{ result.index }}" style="display:none;">
+    <div class="card-body">
+        <h6 class="card-subtitle mb-2">{{ result.court_name }}</h6>
+        <h6 class="card-subtitle mb-2 text-muted">{{ result.author_info }}</h6>
+        <p class="card-text"><strong>Opinion Type</strong>: {{ result.opinion_type }}</p>
+        <p class="card-text"><strong>CourtListener Link</strong>: <a href="{{ result.url }}">{{ result.url }}</a></p>
+        {% if result.download_url %}
+        <p class="card-text"><strong>Original Link</strong>: <a href="{{ result.download_url }}">{{ result.download_url }}</a></p>
+        {% endif %}
+        {% if result.summary %}
+        <p class="card-text"><strong>CourtListener Summary</strong>:</p>
+        <div class="ms-2">{{ result.summary | safe }}</div>
+        {% endif %}
+        {% if result.ai_summary %}
+        <p class="card-text"><strong>AI Summary</strong>:</p>
+        <div class="ms-2 ai-summary summary-{{ result.opinion_id }}">{{ result.ai_summary|safe }}</div>
+        {% endif %}
+        {% if result.other_dates %}
+        <p class="card-text"><strong>Other Dates</strong>: {{ result.other_dates }}</p>
+        {% endif %}
+        <div class="mt-2">
+            <p class="card-text"><strong>Excerpt{{ 's' if result.num_entities > 1 }} ({{ result.num_entities }})</strong>:</p>
+            <ol class="list-group">
+                {% for entity in result.entities %}
+                <li class="list-group-item">
+                    <div class="p-2" style="border: 2px solid #737373; background-color:#F0F0F0; overflow-y: scroll; max-height: 500px;">
+                    {{ entity.text|safe }}
+                    </div>
+                </li>
+                {% endfor %}
+            </ol>
+        </div>
     </div>
 </div>
