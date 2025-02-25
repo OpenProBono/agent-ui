@@ -52,12 +52,8 @@
                         <button type="submit" class="btn btn-secondary" id="resetButton" form="browseForm">Reset Filters</button>
                     </div>
                     <div class="mb-3">
-                        <label for="per_page" class="form-label">Excerpts per page</label>
-                        <select name="per_page" class="form-select" aria-label="Per page select" form="browseForm" id="per_page">
-                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
-                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
-                            <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
-                        </select>
+                        <label for="source" class="form-label">Source</label>
+                        <input type="text" class="form-control" name="source" placeholder="A filename, URL, or case name" value="{{ form_data.source if form_data else '' }}" form="browseForm">
                     </div>
                     <div class="mb-3">
                         <label for="keyword" class="form-label">Keyword Search</label>
@@ -70,6 +66,14 @@
                     <div class="mb-3">
                         <label for="before_date" class="form-label">Before Date</label>
                         <input type="date" class="form-control" name="before_date" id="before_date" value="{{ form_data.before_date if form_data else '' }}" form="browseForm">
+                    </div>
+                    <div class="mb-3">
+                        <label for="per_page" class="form-label">Excerpts per page</label>
+                        <select name="per_page" class="form-select" aria-label="Per page select" form="browseForm" id="per_page">
+                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                            <option value="200" {% if per_page == 200 %}selected{% endif %}>200</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Jurisdiction</label>

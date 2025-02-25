@@ -632,6 +632,7 @@ def manage(collection):
     start = time.time()
     if not collection:
         abort(404)
+    source = request.args.get("source")
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist('jurisdictions')
     after_date = request.args.get('after_date')
@@ -648,6 +649,8 @@ def manage(collection):
         data["after_date"] = after_date
     if before_date:
         data["before_date"] = before_date
+    if source:
+        data["source"] = source
     try:
         with api_request("browse_collection", data=data, params=params) as r:
             r.raise_for_status()

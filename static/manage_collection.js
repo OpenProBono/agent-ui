@@ -56,17 +56,24 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check which button submitted the form
         if (event.submitter.id === "resetButton") {
             event.submitter.disabled = true;
+            event.submitter.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Resetting...';
             window.location.href = window.location.pathname;
             return;
         }
 
         const button = document.getElementById("filterButton");
         button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...';
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Applying...';
 
         // Get the form data
         const formData = new FormData(this);
         const params = new URLSearchParams();
+
+        // Only include source if non-empty
+        const source = formData.get('source');
+        if (source) {
+            params.append('source', source);
+        }
 
         // Only include keyword if non-empty
         const keyword = formData.get('keyword');
