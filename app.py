@@ -679,6 +679,7 @@ def manage(collection):
         jurisdictions=JURISDICTIONS,
         page=page,
         per_page=per_page,
+        has_next=result["has_next"],
     )
 
 @app.route("/resource_count/<collection_name>")

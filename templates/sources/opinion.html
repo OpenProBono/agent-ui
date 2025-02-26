@@ -1,7 +1,7 @@
 <div class="card-header d-flex justify-content-between align-items-center" id="collapseTrigger{{ result.index }}" style="cursor:pointer;">
     <i class="fs-2 bi bi-briefcase-fill"></i>
     <div style="flex: 1; margin: 0 15px;">
-        <h5>{{ result.index }}. {{ result.case_name }}</h5>
+        <h5>{{ (page - 1) * per_page + result.index }}. {{ result.case_name }}</h5>
     </div>
     <i id="collapseIcon{{ result.index }}" class="bi bi-chevron-up"></i>
 </div>
