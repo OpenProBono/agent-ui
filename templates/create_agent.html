@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>OpenProBono | Create Agent</title>
+    <title>{{ "Clone | " + agent.name if clone else "OpenProBono | Create Agent" }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,7 +40,7 @@
     </div>
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1>🛠️ Create Agent</h1>
+            <h1>🛠️ {{ "Clone" if clone else "Create" }} Agent</h1>
             <a href="/agents" class="btn btn-secondary" onclick="return confirm('Are you sure you want to cancel? Any progress will be lost.');">
                 <i class="bi bi-x-lg"></i> Cancel
             </a>
@@ -62,15 +62,15 @@
             <!-- Core Agent Configuration -->
             <div class="form-section">
                 <h2>Core Agent Configuration</h2>
-                <div class="form-group">
+                <div class="form-group my-2">
                     <label for="system_prompt">System Prompt</label>
                     <textarea class="form-control" id="system_prompt" name="system_prompt" rows="3"
-                    placeholder="Sets the overall context and behavior of the bot."></textarea>
+                    placeholder="Sets the overall context and behavior of the bot.">{{ agent.system_prompt if clone else '' }}</textarea>
                 </div>
-                <div class="form-group">
+                <div class="form-group my-2">
                     <label for="message_prompt">Message Prompt</label>
                     <textarea class="form-control" id="message_prompt" name="message_prompt" rows="3"
-                    placeholder="Appended to each user message for consistent context."></textarea>
+                    placeholder="Appended to each user message for consistent context.">{{ agent.message_prompt if clone else '' }}</textarea>
                 </div>
             </div>
 
@@ -82,6 +82,37 @@
                 </div>
                 <div id="search-tools-container">
                     <!-- Dynamic Search Tool fields will be added here -->
+                    {% if clone %}
+                    {% for tool in agent.search_tools %}
+                    <div class="border p-3 mb-3 rounded">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5>Search Tool {{ loop.index }}</h5>
+                            <button type="button" class="btn btn-danger btn-sm remove-search-tool">Remove</button>
+                        </div>
+                        <div class="form-group my-2">
+                            <label>Tool Name</label>
+                            <input type="text" class="form-control" name="search_names[]" placeholder="Unique identifier for this search tool" value="{{ tool.name }}">
+                        </div>
+                        <div class="form-group my-2">
+                            <label>Method</label>
+                            <select class="form-control" name="search_methods[]">
+                                <option value="dynamic_serpapi" {{ "selected" if tool.method == "dynamic_serpapi" else "" }}>dynamic_serpapi</option>
+                                <option value="serpapi" {{ "selected" if tool.method == "serpapi" else "" }}>serpapi</option>
+                                <option value="google" {{ "selected" if tool.method == "google" else "" }}>google</option>
+                                <option value="courtlistener" {{ "selected" if tool.method == "courtlistener" else "" }}>courtlistener</option>
+                            </select>
+                        </div>
+                        <div class="form-group my-2">
+                            <label>Prefix</label>
+                            <input type="text" class="form-control" name="search_prefixes[]" placeholder="Prefix added to all queries using this tool" value="{{ tool.prefix }}">
+                        </div>
+                        <div class="form-group my-2">
+                            <label>Prompt</label>
+                            <textarea class="form-control" name="search_prompts[]" rows="2" placeholder="Instructions on when and how to use this tool">{{ tool.prompt }}</textarea>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
                 </div>
             </div>
 
@@ -93,141 +124,175 @@
                 </div>
                 <div id="vdb-tools-container">
                     <!-- Dynamic VDB Tool fields will be added here -->
+                    {% if clone %}
+                    {% for tool in agent.vdb_tools %}
+                    <div class="border p-3 mb-3 rounded">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5>VDB Tool {{ loop.index }}</h5>
+                            <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
+                        </div>
+                        <div class="form-group my-2">
+                            <label>VDB Name</label>
+                            <input type="text" class="form-control" name="vdb_names[]" placeholder="Unique identifier for this VDB tool" value="{{ tool.name }}">
+                        </div>
+                        <div class="form-group my-2">
+                            <label>Collection Name</label>
+                            <select class="form-control" name="vdb_collections[]">
+                                <option value="courtlistener" {{ "selected" if tool.collection_name == "courtlistener" else "" }}>courtlistener</option>
+                            </select>
+                        </div>
+                        <div class="form-group my-2">
+                            <label>K</label>
+                            <input type="number" class="form-control" name="vdb_ks[]" min="1" value="{{ tool.k }}" placeholder="Number of results to return">
+                        </div>
+                        <div class="form-group my-2">
+                            <label>VDB Prompt</label>
+                            <textarea class="form-control" name="vdb_prompts[]" rows="2" placeholder="Instructions on when and how to use this VDB tool">{{ tool.prompt }}</textarea>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
                 </div>
             </div>
             
             <!-- Chat Model Configuration -->
             <div class="form-section">
                 <h2>Chat Model Configuration</h2>
-                <div class="form-group">
+                <div class="form-group my-2">
                     <label for="engine">Engine</label>
                     <select class="form-control" id="engine" name="engine">
-                        <option value="openai">openai</option>
+                        {% if clone %}
+                        <option value="openai" {{ "selected" if agent.engine == "openai" else "" }}>openai</option>
+                        <option value="anthropic" {{ "selected" if agent.engine == "anthropic" else "" }}>anthropic</option>
+                        {% else %}
+                        <option value="openai" selected>openai</option>
                         <option value="anthropic">anthropic</option>
+                        {% endif %}
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group my-2">
                     <label for="model">Model</label>
-                    <input type="text" class="form-control" id="model" name="model" value="gpt-4o"
+                    <input type="text" class="form-control" id="model" name="model" {% if clone %}value="{{ agent.model }}"{% endif %}
                     placeholder="Specific model to use (e.g., 'gpt-4')">
                 </div>
-                <div class="form-group">
+                <div class="form-group my-2">
                     <label for="temperature">Model Temperature</label>
-                    <input type="number" step="0.1" class="form-control" id="temperature" name="temperature" min="0" max="1" value="0"
-                    placeholder="Controls randomness in responses">
+                    <input type="number" step="0.1" class="form-control" id="temperature" name="temperature" min="0" max="1" value="{{ agent.temperature if clone else 0 }}"
+                    placeholder="Controls randomness in responses: higher values are more random">
                 </div>
-                <div class="form-group">
+                <div class="form-group my-2">
                     <label for="seed">Model Seed</label>
-                    <input type="number" class="form-control" id="seed" name="seed" min="0" max="100" value="0"
-                    placeholder="Controls randomness in responses">
+                    <input type="number" class="form-control" id="seed" name="seed" min="0" max="100" value="{{ agent.seed if clone else 0 }}"
+                    placeholder="Controls randomness in responses: repeated requests with the same seed should produce the same output">
                 </div>
-                <p><strong>Review your configuration before creating the bot.</strong></p>
+                <p class="mt-3"><strong>Review your configuration before creating the bot.</strong></p>
             </div>
             
-            <button type="submit" class="btn btn-gradient btn-lg btn-block">Create Agent</button>
+            <button type="submit" class="btn btn-gradient btn-lg btn-block">{{ "Clone" if clone else "Create" }} Agent</button>
         </form>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script>
         // --- Search Tools Section ---
-        function addSearchToolField() {
-        const container = document.getElementById('search-tools-container');
-        const div = document.createElement('div');
-        div.classList.add('border', 'p-3', 'mb-3');
-        div.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-            <h5>Search Tool</h5>
-            <button type="button" class="btn btn-danger btn-sm remove-search-tool">Remove</button>
-            </div>
-            <div class="form-group">
-            <label>Tool Name</label>
-            <input type="text" class="form-control" name="search_name[]" placeholder="Unique identifier for this search tool">
-            </div>
-            <div class="form-group">
-            <label>Method</label>
-            <select class="form-control" name="search_method[]">
-                <option value="dynamic_serpapi">dynamic_serpapi</option>
-                <option value="serpapi">serpapi</option>
-                <option value="google">google</option>
-                <option value="courtlistener">courtlistener</option>
-            </select>
-            </div>
-            <div class="form-group">
-            <label>Prefix</label>
-            <input type="text" class="form-control" name="search_prefix[]" placeholder="Prefix added to all queries using this tool">
-            </div>
-            <div class="form-group">
-            <label>Prompt</label>
-            <textarea class="form-control" name="search_prompt[]" rows="2" placeholder="Instructions on when and how to use this tool"></textarea>
-            </div>
-        `;
-        // Attach event listener for the remove button
-        div.querySelector('.remove-search-tool').addEventListener('click', function() {
-            div.remove();
+        function addSearchToolField(name, method, prefix, prompt) {
+            const container = document.getElementById('search-tools-container');
+            const div = document.createElement('div');
+            div.classList.add('border', 'p-3', 'mb-3');
+            div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5>Search Tool</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-search-tool">Remove</button>
+                </div>
+                <div class="form-group my-2">
+                    <label>Tool Name</label>
+                    <input type="text" class="form-control" name="search_names[]" placeholder="Unique identifier for this search tool" value="${name}">
+                </div>
+                <div class="form-group my-2">
+                    <label>Method</label>
+                    <select class="form-control" name="search_methods[]">
+                        <option value="dynamic_serpapi" ${method === 'dynamic_serpapi' ? 'selected' : ''}>dynamic_serpapi</option>
+                        <option value="serpapi" ${method === 'serpapi' ? 'selected' : ''}>serpapi</option>
+                        <option value="google" ${method === 'google' ? 'selected' : ''}>google</option>
+                        <option value="courtlistener" ${method === 'courtlistener' ? 'selected' : ''}>courtlistener</option>
+                    </select>
+                </div>
+                <div class="form-group my-2">
+                    <label>Prefix</label>
+                    <input type="text" class="form-control" name="search_prefixes[]" placeholder="Prefix added to all queries using this tool" value="${prefix}">
+                </div>
+                <div class="form-group my-2">
+                    <label>Prompt</label>
+                    <textarea class="form-control" name="search_prompts[]" rows="2" placeholder="Instructions on when and how to use this tool">${prompt}</textarea>
+                </div>
+            `;
+            // Attach event listener for the remove button
+            div.querySelector('.remove-search-tool').addEventListener('click', function() {
+                div.remove();
+                reIndexSearchToolFields();
+            });
+            container.appendChild(div);
             reIndexSearchToolFields();
-        });
-        container.appendChild(div);
-        reIndexSearchToolFields();
         }
 
         function reIndexSearchToolFields() {
-        const container = document.getElementById('search-tools-container');
-        const groups = container.children;
-        for (let i = 0; i < groups.length; i++) {
-            groups[i].querySelector('h5').innerText = `Search Tool ${i + 1}`;
-        }
+            const container = document.getElementById('search-tools-container');
+            const groups = container.children;
+            for (let i = 0; i < groups.length; i++) {
+                groups[i].querySelector('h5').innerText = `Search Tool ${i + 1}`;
+            }
         }
 
         // --- VDB Tools Section ---
-        function addVdbToolField() {
-        const container = document.getElementById('vdb-tools-container');
-        const div = document.createElement('div');
-        div.classList.add('border', 'p-3', 'mb-3');
-        div.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-            <h5>VDB Tool</h5>
-            <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
-            </div>
-            <div class="form-group">
-            <label>VDB Name</label>
-            <input type="text" class="form-control" name="vdb_name[]" placeholder="Unique identifier for this VDB tool">
-            </div>
-            <div class="form-group">
-            <label>Collection Name</label>
-            <select class="form-control" name="vdb_collection[]">
-                <option value="courtlistener">courtlistener</option>
-            </select>
-            </div>
-            <div class="form-group">
-            <label>K</label>
-            <input type="number" class="form-control" name="vdb_k[]" min="1" value="4" placeholder="Number of results to return">
-            </div>
-            <div class="form-group">
-            <label>VDB Prompt</label>
-            <textarea class="form-control" name="vdb_prompt[]" rows="2" placeholder="Instructions on when and how to use this VDB tool"></textarea>
-            </div>
-        `;
-        // Attach event listener for the remove button
-        div.querySelector('.remove-vdb-tool').addEventListener('click', function() {
-            div.remove();
+        function addVdbToolField(name, collName, k, prompt) {
+            const container = document.getElementById('vdb-tools-container');
+            const div = document.createElement('div');
+            div.classList.add('border', 'p-3', 'mb-3');
+            div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5>VDB Tool</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
+                </div>
+                <div class="form-group my-2">
+                    <label>VDB Name</label>
+                    <input type="text" class="form-control" name="vdb_names[]" placeholder="Unique identifier for this VDB tool" value="${name}">
+                </div>
+                <div class="form-group my-2">
+                    <label>Collection Name</label>
+                    <select class="form-control" name="vdb_collections[]">
+                        <option value="courtlistener" ${collName === 'courtlistener' ? 'selected' : ''}>courtlistener</option>
+                    </select>
+                </div>
+                <div class="form-group my-2">
+                    <label>K</label>
+                    <input type="number" class="form-control" name="vdb_ks[]" min="1" value="${k}" placeholder="Number of results to return">
+                </div>
+                <div class="form-group my-2">
+                    <label>VDB Prompt</label>
+                    <textarea class="form-control" name="vdb_prompts[]" rows="2" placeholder="Instructions on when and how to use this VDB tool">${prompt}</textarea>
+                </div>
+            `;
+            // Attach event listener for the remove button
+            div.querySelector('.remove-vdb-tool').addEventListener('click', function() {
+                div.remove();
+                reIndexVdbToolFields();
+            });
+            container.appendChild(div);
             reIndexVdbToolFields();
-        });
-        container.appendChild(div);
-        reIndexVdbToolFields();
         }
 
         function reIndexVdbToolFields() {
-        const container = document.getElementById('vdb-tools-container');
-        const groups = container.children;
-        for (let i = 0; i < groups.length; i++) {
-            groups[i].querySelector('h5').innerText = `VDB Tool ${i + 1}`;
-        }
+            const container = document.getElementById('vdb-tools-container');
+            const groups = container.children;
+            for (let i = 0; i < groups.length; i++) {
+                groups[i].querySelector('h5').innerText = `VDB Tool ${i + 1}`;
+            }
         }
 
         // Attach event listeners to the Add buttons
-        document.getElementById('add-search-tool-btn').addEventListener('click', addSearchToolField);
-        document.getElementById('add-vdb-tool-btn').addEventListener('click', addVdbToolField);
+        // pass empty string args to add search tool field
+        document.getElementById('add-search-tool-btn').addEventListener('click', () => addSearchToolField('', '', '', ''));
+        document.getElementById('add-vdb-tool-btn').addEventListener('click', () => addVdbToolField('', '', 4, ''));
 
         // Optionally, you can add one default search tool on load:
         // window.addEventListener('load', addSearchToolField);
