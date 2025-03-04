@@ -108,7 +108,7 @@ def chatbot(agent, session_id=None):
         return redirect("/signup")
 
     try:
-        with api_request("view_bot", method="GET", id_token=id_token, data=data) as r:
+        with api_request("view_bot", method="POST", id_token=id_token, params=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -248,7 +248,7 @@ def agent_info(agent):
         return redirect("/signup")
 
     try:
-        with api_request("view_bot", id_token=id_token, data=data, method="GET") as r:
+        with api_request("view_bot", id_token=id_token, params=data, method="POST") as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -606,7 +606,7 @@ def clone_agent(agent):
 
     logger.info("Fetching agent info for ID %s", agent)
     try:
-        with api_request("view_bot", method="GET", id_token=id_token, data=data) as r:
+        with api_request("view_bot", method="POST", id_token=id_token, params=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:

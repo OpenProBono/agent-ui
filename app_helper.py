@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 import re
 from html import escape
 
@@ -83,7 +84,7 @@ def api_request(
     timeout=None,
     stream=None,
 ) -> requests.Response:
-    api_url = "http://0.0.0.0:8080"
+    api_url = os.environ["OPB_API_URL"]
     headers = {}
     if id_token:
         headers["Authorization"] = f"Bearer {id_token}"
