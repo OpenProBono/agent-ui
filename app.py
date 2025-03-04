@@ -1,5 +1,4 @@
 import datetime
-import logging
 import os
 import time
 from json import dumps, loads
@@ -11,38 +10,23 @@ from flask import (
     abort,
     flash,
     jsonify,
+    redirect,
     render_template,
     request,
+    session,
 )
 
 from app_helper import (
     JURISDICTIONS,
+    api_request,
     format_summary,
     generate_source_context,
+    logger,
     organize_sources,
 )
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
-
-formatter = logging.Formatter("%(asctime)s %(levelname)s %(funcName)s %(message)s")
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger = logging.getLogger("logger")
-logger.setLevel(logging.INFO)
-logger.addHandler(handler)
-
-API_URL = "http://0.0.0.0:8080"
-API_KEY = os.environ["OPB_TEST_API_KEY"]
-HEADERS = {"X-API-KEY": API_KEY}
-
-
-def api_request(endpoint, method="POST", data=None, files=None, params=None, timeout=None, stream=None):
-    url = f"{API_URL}/{endpoint}"
-    logger.info("Making %s request to /%s", method, endpoint)
-    if method == "GET":
-        return requests.get(url, headers=HEADERS, params=data, timeout=timeout, stream=stream)
-    return requests.post(url, headers=HEADERS, json=data, files=files, params=params, timeout=timeout, stream=stream)
 
 
 @app.route("/")
@@ -60,21 +44,34 @@ def index():
         "searches_completed": 45,
         "file_storage_used": "2 GB",
     }
-    return render_template("index.html", agents=agents, metrics=metrics)
+    email = session.get("email")
+    return render_template("index.html", agents=agents, metrics=metrics, email=email)
 
 
 @app.route("/signup")
 def signup():
-    # firebase_config = {
-    #     "apiKey": os.environ.get("FIREBASE_API_KEY"),
-    #     "authDomain": os.environ.get("FIREBASE_AUTH_DOMAIN"),
-    #     "projectId": os.environ.get("FIREBASE_PROJECT_ID")
-    # }
-    # return render_template("index.html", firebase_config=firebase_config)
+    logger.info("Signup endpoint called.")
     return render_template("signup.html")
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    logger.info("Login endpoint called.")
+    session["email"] = request.json.get("email")
+    session["id_token"] = request.json.get("idToken")
+    return redirect("/")
+
+
+@app.route("/logout")
+def logout():
+    logger.info("Logout endpoint called.")
+    session.clear()
+    return redirect("/")
+
 
 @app.route("/agents")
 def agents():
+    logger.info("Agents endpoint called.")
     # Example data
     agents = [
         {"id": 1, "name": "default_bot", "created_on": datetime.date.today(), "tools": 2, "resources": 10, "dynamic": True},
@@ -86,6 +83,7 @@ def agents():
 
 @app.route("/resources")
 def resources():
+    logger.info("Resources endpoint called.")
     # Example data
     collections = [
         {"name": "search_collection_vj1", "created_on": datetime.date.today(), "resource_count": 10000},
@@ -101,12 +99,16 @@ def resources():
 
 @app.route("/agent/<agent>", methods=["GET"])
 @app.route("/agent/<agent>/", methods=["GET"])
-@app.route("/agent/<agent>/session/<session>", methods=["GET"])
-def chatbot(agent, session=None):
+@app.route("/agent/<agent>/session/<session_id>", methods=["GET"])
+def chatbot(agent, session_id=None):
     data = {"bot_id": agent}
     logger.info("Fetching agent info for ID %s", agent)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     try:
-        with api_request("view_bot", data=data, method="GET") as r:
+        with api_request("view_bot", method="GET", id_token=id_token, data=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -141,6 +143,7 @@ def chatbot(agent, session=None):
 @app.route("/users", methods=["GET"])
 @app.route("/users/", methods=["GET"])
 def users():
+    logger.info("Users endpoint called.")
     example_data = [{
         "id": 1,
         "name": "Nick",
@@ -158,6 +161,11 @@ def users():
 
 @app.route("/chat", methods=["GET", "POST"])
 def chat():
+    logger.info("Chat endpoint called.")
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     if request.method == "POST":
         # Get the message and files from the request
         files = request.files.getlist("files")
@@ -174,6 +182,7 @@ def chat():
             try:
                 with api_request(
                     "upload_files",
+                    id_token=id_token,
                     files=files_to_upload,
                     params={"session_id": session_id},
                 ) as r:
@@ -196,7 +205,7 @@ def chat():
 
         def generate():
             try:
-                with api_request("chat_session_stream", data=request_data, stream=True) as r:
+                with api_request("chat_session_stream", id_token=id_token, data=request_data, stream=True) as r:
                     r.raise_for_status()
                     for line in r.iter_lines(decode_unicode=True):
                         if line:
@@ -217,8 +226,12 @@ def chat():
 @app.route("/agent/<agent>/new_session", methods=["GET"])
 def new_session(agent):
     logger.info("Starting new session for agent ID %s", agent)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     try:
-        with api_request("initialize_session", data={"bot_id": agent}) as r:
+        with api_request("initialize_session", id_token=id_token, data={"bot_id": agent}) as r:
             r.raise_for_status()
             return jsonify(r.json())
     except Exception:
@@ -230,8 +243,12 @@ def new_session(agent):
 def agent_info(agent):
     data = {"bot_id": agent}
     logger.info("Agent info endpoint called for ID %s", agent)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     try:
-        with api_request("view_bot", data=data, method="GET") as r:
+        with api_request("view_bot", id_token=id_token, data=data, method="GET") as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -251,10 +268,14 @@ def get_sessions():
     try:
         sessions = []
         logger.info("Sessions endpoint called.")
+        id_token = session.get("id_token")
+        if not id_token:
+            return redirect("/signup")
+
         for session_id in request.args.getlist("ids[]"):
             logger.info("Fetching session info for session ID %s", session_id)
             data = {"session_id": session_id}
-            with api_request("fetch_session", data=data) as r:
+            with api_request("fetch_session", id_token=id_token, data=data) as r:
                 r.raise_for_status()
                 session_data = r.json()
                 sessions.append({
@@ -273,9 +294,13 @@ def get_sessions():
 @app.route("/get_session_messages/<session_id>", methods=["GET"])
 def get_session_messages(session_id):
     logger.info("Session messages endpoint called for session ID %s", session_id)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     try:
         data = {"session_id": session_id}
-        with api_request("fetch_session_formatted_history", data=data) as r:
+        with api_request("fetch_session_formatted_history", id_token=id_token, data=data) as r:
             r.raise_for_status()
             session_data = r.json()
             logger.debug("Session messages endpoint got response: %s", session_data)
@@ -288,8 +313,11 @@ def get_session_messages(session_id):
 @app.route("/status", methods=["GET"])
 def get_status():
     logger.info("Status endpoint called.")
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
     try:
-        with api_request("", method="GET", timeout=5) as r:
+        with api_request("", method="GET", id_token=id_token, timeout=5) as r:
             r.raise_for_status()
     except requests.exceptions.Timeout:
         logger.exception("Status endpoint timed out.")
@@ -304,6 +332,10 @@ def get_status():
 @app.route("/feedback", methods=["POST"])
 def feedback():
     logger.info("Feedback endpoint called.")
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     feedback_data = loads(request.form.get("data"))
     feedback_index = request.form.get("index")
     session_id = request.form.get("sessionId")
@@ -315,7 +347,7 @@ def feedback():
         "categories": feedback_data["categories"] if feedback_data["type"] == "dislike" else [],
     }
     try:
-        with api_request("session_feedback", data=data) as r:
+        with api_request("session_feedback", id_token=id_token, data=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -333,6 +365,9 @@ def feedback():
 @app.route("/search/<collection>", methods=["GET"])
 def search(collection):
     start = time.time()
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
     if not collection:
         abort(404)
     semantic = request.args.get("semantic")
@@ -356,7 +391,7 @@ def search(collection):
     if before_date:
         data["before_date"] = before_date
     try:
-        with api_request("search_collection", data=data) as r:
+        with api_request("search_collection", id_token=id_token, data=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -388,6 +423,9 @@ def manage(collection):
     start = time.time()
     if not collection:
         abort(404)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
     source = request.args.get("source")
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist("jurisdictions")
@@ -408,7 +446,7 @@ def manage(collection):
     if source:
         data["source"] = source
     try:
-        with api_request("browse_collection", data=data, params=params) as r:
+        with api_request("browse_collection", id_token=id_token, data=data, params=params) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -440,8 +478,12 @@ def manage(collection):
 
 @app.route("/resource_count/<collection_name>")
 def get_resource_count(collection_name) -> int:
+    logger.info("Getting resource count for collection %s.", collection_name)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
     try:
-        with api_request(f"resource_count/{collection_name}", method="GET", timeout=45) as r:
+        with api_request(f"resource_count/{collection_name}", method="GET", id_token=id_token, timeout=45) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -454,9 +496,13 @@ def get_resource_count(collection_name) -> int:
 
 @app.route("/summary/<resource_id>")
 def fetch_summary(resource_id):
+    logger.info("Fetching summary for %s.", resource_id)
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
     params = {"resource_id": resource_id}
     try:
-        with api_request("summary", method="GET", params=params, timeout=30) as r:
+        with api_request("summary", method="GET", id_token=id_token, params=params, timeout=30) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -470,6 +516,11 @@ def fetch_summary(resource_id):
 
 @app.route("/create-agent", methods=["GET", "POST"])
 def create_agent():
+    logger.info("Create agent endpoint called.")
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     if request.method == "GET":
         return render_template("create_agent.html")
     # Retrieve core fields
@@ -526,7 +577,7 @@ def create_agent():
 
 
     try:
-        with api_request("create_bot", data=bot_data) as r:
+        with api_request("create_bot", id_token=id_token, data=bot_data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -547,10 +598,15 @@ def create_agent():
 
 @app.route("/clone/<agent>", methods=["GET"])
 def clone_agent(agent):
+    logger.info("Cloning agent: %s", agent)
     data = {"bot_id": agent}
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
     logger.info("Fetching agent info for ID %s", agent)
     try:
-        with api_request("view_bot", data=data, method="GET") as r:
+        with api_request("view_bot", method="GET", id_token=id_token, data=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:

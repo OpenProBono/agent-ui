@@ -1,7 +1,9 @@
 import datetime
+import logging
 import re
 from html import escape
 
+import requests
 from markdown import markdown
 
 JURISDICTIONS = [
@@ -61,6 +63,36 @@ JURISDICTIONS = [
     {"display": "Wisconsin", "value": "wi"},
     {"display": "Wyoming", "value": "wy"},
 ]
+
+
+formatter = logging.Formatter("%(asctime)s %(levelname)s %(funcName)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger = logging.getLogger("logger")
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+
+
+def api_request(
+    endpoint,
+    method="POST",
+    id_token=None,
+    data=None,
+    files=None,
+    params=None,
+    timeout=None,
+    stream=None,
+) -> requests.Response:
+    api_url = "http://0.0.0.0:8080"
+    headers = {}
+    if id_token:
+        headers["Authorization"] = f"Bearer {id_token}"
+    url = f"{api_url}/{endpoint}"
+    logger.info("Making %s request to /%s", method, endpoint)
+    if method == "GET":
+        return requests.get(url, headers=headers, params=data, timeout=timeout, stream=stream)
+    return requests.post(url, headers=headers, json=data, files=files, params=params, timeout=timeout, stream=stream)
+
 
 def mark_keyword(text, keyword):
     # Split the keyword into individual words

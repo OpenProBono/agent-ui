@@ -36,12 +36,29 @@
     <div class="main-content">
         <!-- Header -->
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <!-- Greeting will update based on login status -->
-            <h2 id="greeting">Hello, Guest!</h2>
-            <div id="auth-actions">
-                <!-- Default login button when not authenticated -->
-                <button id="login-btn" class="btn btn-primary">Login / Create Account</button>
+            {% if email %}
+            <h2>Hello, {{ email }}!</h2>
+            <div class="dropdown">
+                <!-- Profile Avatar with Initial -->
+                <a class="d-flex align-items-center justify-content-center rounded-circle text-white text-decoration-none" 
+                   href="#" role="button" id="dropdownProfile" data-bs-toggle="dropdown" aria-expanded="false" 
+                   style="width: 40px; height: 40px; font-size: 18px; background-color: #5c28df">
+                    {{ email[0].upper() }}
+                </a>
+            
+                <!-- Dropdown Menu -->
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownProfile">
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center" href="/logout">
+                            <i class="bi bi-box-arrow-right me-2"></i> Log Out
+                        </a>
+                    </li>
+                </ul>
             </div>
+            {% else %}
+            <h2>Hello, Guest!</h2>
+            <a class="btn btn-primary" href="/signup">Login / Create Account</a>
+            {% endif %}
         </div>
 
         <!-- Date and Metrics -->
@@ -164,66 +181,6 @@
             </div>
         </div>
     </div>
-
-         <!-- Firebase Scripts for Authentication -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-    <script>
-      const firebaseConfig = {
-        apiKey: "AIzaSyDOT1aDiyrkv65Pjh2vm5K0Gi_WBOV1Jzw",
-        authDomain: "openprobono.firebaseapp.com",
-        projectId: "openprobono"
-      };
-      
-      // Initialize Firebase
-      firebase.initializeApp(firebaseConfig);
-      const auth = firebase.auth();
-
-      // Update UI based on authentication state
-      auth.onAuthStateChanged(user => {
-        const greetingEl = document.getElementById('greeting');
-        const authActionsEl = document.getElementById('auth-actions');
-
-        if (user) {
-          // If user is logged in, display their name/email and a dropdown with logout option.
-          greetingEl.textContent = 'Hello, ' + (user.displayName || user.email);
-          authActionsEl.innerHTML = `
-            <div class="dropdown">
-              <a class="d-flex align-items-center justify-content-center rounded-circle text-white text-decoration-none" 
-                 href="#" role="button" id="dropdownProfile" data-bs-toggle="dropdown" aria-expanded="false" 
-                 style="width: 40px; height: 40px; font-size: 18px; background-color: #5c28df">
-                ${user.displayName ? user.displayName.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-              </a>
-              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownProfile">
-                <li>
-                  <a class="dropdown-item d-flex align-items-center" href="#" id="logout-link">
-                    <i class="bi bi-box-arrow-right me-2"></i> Log Out
-                  </a>
-                </li>
-              </ul>
-            </div>
-          `;
-          // Set up logout functionality
-          document.getElementById('logout-link').addEventListener('click', (e) => {
-            e.preventDefault();
-            auth.signOut().then(() => {
-              window.location.reload();
-            }).catch((error) => {
-              console.error("Logout error:", error);
-            });
-          });
-        } else {
-          // If no user is logged in, display the login / create account button.
-          greetingEl.textContent = 'Hello, Guest!';
-          authActionsEl.innerHTML = `<button id="login-btn" class="btn btn-primary">Login / Create Account</button>`;
-          document.getElementById('login-btn').addEventListener('click', () => {
-             // Redirect to your signup/login page (e.g., /signup)
-             window.location.href = '/signup';
-          });
-        }
-      });
-    </script>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 </body>
 </html>

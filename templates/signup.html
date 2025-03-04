@@ -1,213 +1,214 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Signup / Login</title>
-  <!-- Include Firebase App and Authentication compat libraries -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      background: #f4f4f4;
-    }
-    .container {
-      max-width: 400px;
-      margin: 40px auto;
-      background: #fff;
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-    h2 {
-      text-align: center;
-    }
-    form {
-      margin: 20px 0;
-    }
-    input[type="email"],
-    input[type="password"] {
-      width: 100%;
-      padding: 10px;
-      margin: 8px 0;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-      box-sizing: border-box;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      background: #4285F4;
-      color: white;
-      border: none;
-      border-radius: 3px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #357ae8;
-    }
-    .oauth-buttons {
-      margin-top: 20px;
-    }
-    .oauth-buttons button {
-      width: 48%;
-      margin: 1%;
-      padding: 10px;
-      font-size: 14px;
-      border: none;
-      border-radius: 3px;
-      cursor: pointer;
-    }
-    .google-btn {
-      background: #DB4437;
-      color: white;
-    }
-    .microsoft-btn {
-      background: #2F2F2F;
-      color: white;
-    }
-    .toggle {
-      text-align: center;
-      margin-top: 10px;
-      cursor: pointer;
-      color: #4285F4;
-      text-decoration: underline;
-    }
-    .message, .error {
-      text-align: center;
-      margin-top: 10px;
-      font-weight: bold;
-    }
-    .error { color: red; }
-    .message { color: green; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signup / Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.png">
+    <link rel="stylesheet" href="/static/style_dashboard.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f4f4f4;
+        }
+        .container {
+            max-width: 400px;
+            margin: 40px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            text-align: center;
+        }
+        form {
+            margin: 20px 0;
+        }
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4285F4;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #357ae8;
+        }
+        .oauth-buttons {
+            margin-top: 20px;
+        }
+        .oauth-buttons button {
+            width: 48%;
+            margin: 1%;
+            padding: 10px;
+            font-size: 14px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .google-btn {
+            background: #DB4437;
+            color: white;
+        }
+        .microsoft-btn {
+            background: #2F2F2F;
+            color: white;
+        }
+        .toggle {
+            text-align: center;
+            margin-top: 10px;
+            cursor: pointer;
+            color: #4285F4;
+            text-decoration: underline;
+        }
+        .message, .error {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .error { color: red; }
+        .message { color: green; }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h2 id="form-title">Login</h2>
-    <form id="auth-form">
-      <input type="email" id="email" placeholder="Email" required />
-      <input type="password" id="password" placeholder="Password" required />
-      <button type="submit" id="submit-btn">Login</button>
-    </form>
-    <div class="oauth-buttons">
-      <button id="google-btn" class="google-btn">Sign in with Google</button>
-      <button id="microsoft-btn" class="microsoft-btn">Sign in with Microsoft</button>
+    <div class="container">
+        <h2 id="form-title">Login</h2>
+        <form id="auth-form">
+            <input type="email" id="email" placeholder="Email" required />
+            <input type="password" id="password" placeholder="Password" required />
+            <button type="submit" id="submit-btn">Login</button>
+        </form>
+        <div class="oauth-buttons">
+            <button id="google-btn" class="google-btn">Sign in with Google</button>
+            <button id="microsoft-btn" class="microsoft-btn">Sign in with Microsoft</button>
+        </div>
+        <div class="toggle" id="toggle-link">Don't have an account? Sign up</div>
+        <div class="error" id="error-message"></div>
+        <div class="message" id="message"></div>
     </div>
-    <div class="toggle" id="toggle-link">Don't have an account? Sign up</div>
-    <div class="error" id="error-message"></div>
-    <div class="message" id="message"></div>
-  </div>
 
-  <script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyDOT1aDiyrkv65Pjh2vm5K0Gi_WBOV1Jzw",
-        authDomain: "openprobono.firebaseapp.com",
-        projectId: "openprobono"
-      };
-      
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
+    <!-- Include Firebase App and Authentication compat libraries -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyDOT1aDiyrkv65Pjh2vm5K0Gi_WBOV1Jzw",
+            authDomain: "openprobono.firebaseapp.com",
+            projectId: "openprobono"
+        };
+            
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
 
-    // UI Elements
-    const formTitle   = document.getElementById('form-title');
-    const authForm    = document.getElementById('auth-form');
-    const submitBtn   = document.getElementById('submit-btn');
-    const toggleLink  = document.getElementById('toggle-link');
-    const errorMsg    = document.getElementById('error-message');
-    const messageDiv  = document.getElementById('message');
+        // UI Elements
+        const formTitle = document.getElementById('form-title');
+        const authForm = document.getElementById('auth-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const toggleLink = document.getElementById('toggle-link');
+        const errorMsg = document.getElementById('error-message');
+        const messageDiv = document.getElementById('message');
 
-    // Control flag: true = Login, false = Sign Up
-    let isLogin = true;
+        // Control flag: true = Login, false = Sign Up
+        let isLogin = true;
 
-    // Toggle between Login and Sign Up views
-    toggleLink.addEventListener('click', () => {
-      isLogin = !isLogin;
-      if (isLogin) {
-        formTitle.textContent = 'Login';
-        submitBtn.textContent = 'Login';
-        toggleLink.textContent = "Don't have an account? Sign up";
-      } else {
-        formTitle.textContent = 'Create Account';
-        submitBtn.textContent = 'Sign Up';
-        toggleLink.textContent = "Already have an account? Login";
-      }
-      // Clear messages and reset form
-      errorMsg.textContent = '';
-      messageDiv.textContent = '';
-      authForm.reset();
-    });
-
-    // Handle email/password form submission for login and signup
-    authForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      errorMsg.textContent = '';
-      messageDiv.textContent = '';
-
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-
-      if (isLogin) {
-        // Login flow
-        auth.signInWithEmailAndPassword(email, password)
-          .then((userCredential) => {
-            messageDiv.textContent = 'Login successful!';
-            console.log("Logged in user:", userCredential.user);
-            // Redirect to dashboard
-            window.location.href = "/";
-          })
-          .catch((error) => {
-            errorMsg.textContent = error.message;
-            console.error("Login error:", error);
-          });
-      } else {
-        // Signup flow
-        auth.createUserWithEmailAndPassword(email, password)
-          .then((userCredential) => {
-            messageDiv.textContent = 'Account created successfully!';
-            console.log("New user account:", userCredential.user);
-            // Redirect to dashboard
-            window.location.href = "/";
-          })
-          .catch((error) => {
-            errorMsg.textContent = error.message;
-            console.error("Sign up error:", error);
-          });
-      }
-    });
-
-    // Sign in with Google
-    document.getElementById('google-btn').addEventListener('click', () => {
-      errorMsg.textContent = '';
-      const googleProvider = new firebase.auth.GoogleAuthProvider();
-      auth.signInWithPopup(googleProvider)
-        .then((result) => {
-          console.log("Google sign in successful:", result.user);
-          window.location.href = "/";
-        })
-        .catch((error) => {
-          errorMsg.textContent = error.message;
-          console.error("Google sign in error:", error);
+        // Toggle between Login and Sign Up views
+        toggleLink.addEventListener('click', () => {
+            isLogin = !isLogin;
+            if (isLogin) {
+                formTitle.textContent = 'Login';
+                submitBtn.textContent = 'Login';
+                toggleLink.textContent = "Don't have an account? Sign up";
+            } else {
+                formTitle.textContent = 'Create Account';
+                submitBtn.textContent = 'Sign Up';
+                toggleLink.textContent = "Already have an account? Login";
+            }
+            // Clear messages and reset form
+            errorMsg.textContent = '';
+            messageDiv.textContent = '';
+            authForm.reset();
         });
-    });
 
-    // Sign in with Microsoft
-    document.getElementById('microsoft-btn').addEventListener('click', () => {
-      errorMsg.textContent = '';
-      const microsoftProvider = new firebase.auth.OAuthProvider('microsoft.com');
-      auth.signInWithPopup(microsoftProvider)
-        .then((result) => {
-          console.log("Microsoft sign in successful:", result.user);
-          window.location.href = "/";
-        })
-        .catch((error) => {
-          errorMsg.textContent = error.message;
-          console.error("Microsoft sign in error:", error);
+        // Handle email/password form submission for login and signup
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorMsg.textContent = '';
+            messageDiv.textContent = '';
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                let userCredential;
+                if (isLogin) {
+                    userCredential = await auth.signInWithEmailAndPassword(email, password);
+                } else {
+                    userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                }
+                messageDiv.textContent = 'Login successful!';
+                const idToken = await userCredential.user.getIdToken();
+                await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        "idToken": idToken,
+                        "email": email,
+                    }),
+                });
+                window.location.href = '/';
+            } catch (error) {
+                errorMsg.textContent = error.message;
+                console.error("Login error:", error);
+            }
         });
-    });
-  </script>
+
+        // Sign in with Google
+        document.getElementById('google-btn').addEventListener('click', () => {
+            errorMsg.textContent = '';
+            const googleProvider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(googleProvider)
+                .then((result) => {
+                    console.log("Google sign in successful:", result.user);
+                    window.location.href = "/";
+                })
+                .catch((error) => {
+                    errorMsg.textContent = error.message;
+                    console.error("Google sign in error:", error);
+                });
+        });
+
+        // Sign in with Microsoft
+        document.getElementById('microsoft-btn').addEventListener('click', () => {
+            errorMsg.textContent = '';
+            const microsoftProvider = new firebase.auth.OAuthProvider('microsoft.com');
+            auth.signInWithPopup(microsoftProvider)
+                .then((result) => {
+                    console.log("Microsoft sign in successful:", result.user);
+                    window.location.href = "/";
+                })
+                .catch((error) => {
+                    errorMsg.textContent = error.message;
+                    console.error("Microsoft sign in error:", error);
+                });
+        });
+    </script>
 </body>
 </html>
