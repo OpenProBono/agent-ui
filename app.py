@@ -182,9 +182,8 @@ def chatbot(agent, session_id=None):
     vdb_tools = []
     if "vdb_tools" in result["data"]:
         vdb_tools = result["data"]["vdb_tools"]
-    # name is the agent name with capitalized first letters
-    # and underscores replaced with spaces
-    name = " ".join(word.capitalize() for word in agent.split("_"))
+    # Use the actual name from the API response if available, otherwise derive from agent ID
+    name = result["data"].get("name") if result["data"].get("name") else " ".join(word.capitalize() for word in agent.split("_"))
     return render_template(
         "chatbot.html",
         engine=engine,
@@ -602,6 +601,7 @@ def create_agent():
     if request.method == "GET":
         return render_template("create_agent.html", user=user)
     # Retrieve core fields
+    bot_name = request.form.get("bot_name", None)
     system_prompt = request.form.get("system_prompt", None)
     message_prompt = request.form.get("message_prompt", None)
     search_names = request.form.getlist("search_names[]")
@@ -644,6 +644,7 @@ def create_agent():
     }
 
     bot_data = {
+        "name": bot_name,
         "search_tools": search_tools,
         "vdb_tools": vdb_tools,
         "chat_model": chat_model,
@@ -713,7 +714,8 @@ def clone_agent(agent):
     message_prompt = None
     if "message_prompt" in result["data"]:
         message_prompt = result["data"]["message_prompt"]
-    name = " ".join(word.capitalize() for word in agent.split("_"))
+    # Use the actual name from the API response if available, otherwise derive from agent ID
+    name = result["data"].get("name") if result["data"].get("name") else " ".join(word.capitalize() for word in agent.split("_"))
     agent = {
         "name": name,
         "system_prompt": system_prompt,
