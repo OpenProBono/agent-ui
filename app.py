@@ -44,8 +44,11 @@ def index():
         "searches_completed": 45,
         "file_storage_used": "2 GB",
     }
-    email = session.get("email")
-    return render_template("index.html", agents=agents, metrics=metrics, email=email)
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid")
+    }
+    return render_template("index.html", agents=agents, metrics=metrics, user=user)
 
 
 @app.route("/signup")
@@ -124,7 +127,7 @@ def agents():
             {"id": 3, "name": "manual_sources_case_search", "created_on": datetime.date.today(), "tools": 4, "resources": 150, "dynamic": True},
         ]
     
-    return render_template("agents.html", agents=agents)
+    return render_template("agents.html", agents=agents, user=user)
 
 
 @app.route("/resources")
@@ -140,7 +143,11 @@ def resources():
         {"name": "helpguide.pdf", "added_on": datetime.date.today(), "collection_count": 2},
         {"name": "www.google.com", "added_on": datetime.date.today(), "collection_count": 1},
     ]
-    return render_template("resources.html", collections=collections, resources=resources)
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid")
+    }
+    return render_template("resources.html", collections=collections, resources=resources, user=user)
 
 
 @app.route("/agent/<agent>", methods=["GET"])
@@ -185,6 +192,7 @@ def chatbot(agent, session_id=None):
         search_tools=search_tools,
         vdb_tools=vdb_tools,
         name=name,
+        user=user,
     )
 
 @app.route("/users", methods=["GET"])
@@ -203,7 +211,11 @@ def users():
         "email": "arman@openprobono.com",
         "role": "User",
     }]
-    return render_template("users.html", users=example_data)
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid")
+    }
+    return render_template("users.html", users=example_data, user=user)
 
 
 @app.route("/chat", methods=["GET", "POST"])
@@ -421,7 +433,12 @@ def search(collection):
         abort(404)
     semantic = request.args.get("semantic")
     if not semantic:
-        return render_template("search.html", collection=collection, jurisdictions=JURISDICTIONS)
+        email = session.get("email")
+        user = {
+            "email": email,
+            "firebase_uid": session.get("firebase_uid")
+        }
+        return render_template("search.html", collection=collection, jurisdictions=JURISDICTIONS, user=user)
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist("jurisdictions")
     after_date = request.args.get("after_date")
@@ -457,6 +474,11 @@ def search(collection):
     ]
     end = time.time()
     elapsed = str(round(end - start, 5))
+    email = session.get("email")
+    user = {
+        "email": email,
+        "firebase_uid": session.get("firebase_uid")
+    }
     return render_template(
         "search.html",
         collection=collection,
@@ -465,6 +487,7 @@ def search(collection):
         form_data=data,
         elapsed=elapsed,
         jurisdictions=JURISDICTIONS,
+        user=user,
     )
 
 @app.route("/manage/<collection>", methods=["GET"])
@@ -512,6 +535,11 @@ def manage(collection):
     ]
     end = time.time()
     elapsed = str(round(end - start, 5))
+    email = session.get("email")
+    user = {
+        "email": email,
+        "firebase_uid": session.get("firebase_uid")
+    }
     return render_template(
         "manage_collection.html",
         collection=collection,
@@ -523,6 +551,7 @@ def manage(collection):
         page=page,
         per_page=per_page,
         has_next=result["has_next"],
+        user=user,
     )
 
 @app.route("/resource_count/<collection_name>")
@@ -571,7 +600,7 @@ def create_agent():
         return redirect("/signup")
     user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     if request.method == "GET":
-        return render_template("create_agent.html")
+        return render_template("create_agent.html", user=user)
     # Retrieve core fields
     system_prompt = request.form.get("system_prompt", None)
     message_prompt = request.form.get("message_prompt", None)
@@ -696,7 +725,12 @@ def clone_agent(agent):
         "temperature": temperature,
         "seed": seed,
     }
-    return render_template("create_agent.html", clone=True, agent=agent)
+    email = session.get("email")
+    user = {
+        "email": email,
+        "firebase_uid": session.get("firebase_uid")
+    }
+    return render_template("create_agent.html", clone=True, agent=agent, user=user)
 
 
 @app.route("/delete-agent/<agent_id>", methods=["GET"])

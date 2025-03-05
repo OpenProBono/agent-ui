@@ -41,9 +41,12 @@
     <div class="main-content">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>🛠️ {{ "Clone" if clone else "Create" }} Agent</h1>
-            <a href="/agents" class="btn btn-secondary" onclick="return confirm('Are you sure you want to cancel? Any progress will be lost.');">
-                <i class="bi bi-x-lg"></i> Cancel
-            </a>
+            <div class="d-flex align-items-center">
+                <a href="/agents" class="btn btn-secondary me-3" onclick="return confirm('Are you sure you want to cancel? Any progress will be lost.');">
+                    <i class="bi bi-x-lg"></i> Cancel
+                </a>
+                {% include 'components/profile_dropdown.html' %}
+            </div>
         </div>
 
         <!-- Flash messages -->
