@@ -58,6 +58,7 @@ def signup():
 def login():
     logger.info("Login endpoint called.")
     session["email"] = request.json.get("email")
+    session["firebase_uid"] = request.json.get("firebase_uid")
     session["id_token"] = request.json.get("idToken")
     return redirect("/")
 
@@ -163,6 +164,7 @@ def users():
 def chat():
     logger.info("Chat endpoint called.")
     id_token = session.get("id_token")
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     if not id_token:
         return redirect("/signup")
 
@@ -201,6 +203,7 @@ def chat():
         request_data = {
             "session_id": session_id,
             "message": message,
+            "user": user
         }
 
         def generate():
@@ -227,11 +230,11 @@ def chat():
 def new_session(agent):
     logger.info("Starting new session for agent ID %s", agent)
     id_token = session.get("id_token")
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     if not id_token:
         return redirect("/signup")
-
     try:
-        with api_request("initialize_session", id_token=id_token, data={"bot_id": agent}) as r:
+        with api_request("initialize_session", id_token=id_token, data={"bot_id": agent, "user": user}) as r:
             r.raise_for_status()
             return jsonify(r.json())
     except Exception:
