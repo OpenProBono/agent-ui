@@ -61,6 +61,18 @@
             </div>
         </div>
 
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
         <!-- Agents Table -->
         <div class="table-responsive">
             <table class="table table-bordered table-striped custom-table">
@@ -84,9 +96,28 @@
                         <td>{{ "Yes" if agent.dynamic else "No" }}</td>
                         <td>
                             <div class="btn-group" role="group">
-                                <a href="/agent/{{ agent.name }}" class="btn btn-success btn-sm">Chat</a>
-                                <a href="/clone/{{ agent.name }}" class="btn btn-info btn-sm">Clone</a>
-                                <a href="/delete-agent/{{ agent.name }}" class="btn btn-danger btn-sm">Delete</a>
+                                <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
+                                <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
+                                <a href="#" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal{{ agent.id }}">Delete</a>
+                            </div>
+                            
+                            <!-- Delete Confirmation Modal -->
+                            <div class="modal fade" id="deleteModal{{ agent.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ agent.id }}" aria-hidden="true">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title" id="deleteModalLabel{{ agent.id }}">Confirm Delete</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            Are you sure you want to delete the agent "{{ agent.name }}"? This action cannot be undone.
+                                        </div>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                            <a href="/delete-agent/{{ agent.id }}" class="btn btn-danger">Delete</a>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </td>
                     </tr>

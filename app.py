@@ -73,12 +73,57 @@ def logout():
 @app.route("/agents")
 def agents():
     logger.info("Agents endpoint called.")
-    # Example data
-    agents = [
-        {"id": 1, "name": "default_bot", "created_on": datetime.date.today(), "tools": 2, "resources": 10, "dynamic": True},
-        {"id": 2, "name": "default_anthropic", "created_on": datetime.date.today(), "tools": 1, "resources": 4, "dynamic": False},
-        {"id": 3, "name": "manual_sources_case_search", "created_on": datetime.date.today(), "tools": 4, "resources": 150, "dynamic": True},
-    ]
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    # Initialize agents list
+    agents = []
+    
+    # If user is authenticated, fetch real agent data
+    if id_token:
+        try:
+            with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                if r.status_code == 200:
+                    response_data = r.json()
+                    if response_data.get("message") == "Success" and "data" in response_data:
+                        # Transform the API response to match the expected format for the template
+                        for bot_id, bot in response_data["data"].items():
+                            # Count total tools (search_tools + vdb_tools)
+                            search_tools = bot.get("search_tools", [])
+                            vdb_tools = bot.get("vdb_tools", [])
+                            total_tools = len(search_tools) + len(vdb_tools)
+                            
+                            # Count resources (assuming vdb_tools represent resources)
+                            resources = len(vdb_tools)
+                            
+                            # Determine if bot is dynamic (has search tools)
+                            is_dynamic = len(search_tools) > 0
+                            
+                            agent = {
+                                "id": bot_id,
+                                "name": bot.get("name", "Untitled Bot"),
+                                "created_on": datetime.datetime.fromisoformat(bot.get("created_at", datetime.datetime.now().isoformat())).date() if bot.get("created_at") else datetime.date.today(),
+                                "tools": total_tools,
+                                "resources": resources,
+                                "dynamic": is_dynamic
+                            }
+                            agents.append(agent)
+                else:
+                    logger.error(f"Failed to fetch agents: {r.status_code} - {r.text}")
+        except Exception as e:
+            logger.error(f"Error fetching agents: {str(e)}")
+    
+    # If no agents were fetched (either due to error or user not authenticated),
+    # provide example data for display purposes
+    if not agents:
+        logger.warning("Using example agent data as no real data was fetched.")
+        agents = [
+            {"id": 1, "name": "default_bot", "created_on": datetime.date.today(), "tools": 2, "resources": 10, "dynamic": True},
+            {"id": 2, "name": "default_anthropic", "created_on": datetime.date.today(), "tools": 1, "resources": 4, "dynamic": False},
+            {"id": 3, "name": "manual_sources_case_search", "created_on": datetime.date.today(), "tools": 4, "resources": 150, "dynamic": True},
+        ]
+    
     return render_template("agents.html", agents=agents)
 
 
@@ -102,7 +147,8 @@ def resources():
 @app.route("/agent/<agent>/", methods=["GET"])
 @app.route("/agent/<agent>/session/<session_id>", methods=["GET"])
 def chatbot(agent, session_id=None):
-    data = {"bot_id": agent}
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    data = {"bot_id": agent, "user": user}
     logger.info("Fetching agent info for ID %s", agent)
     id_token = session.get("id_token")
     if not id_token:
@@ -650,3 +696,43 @@ def clone_agent(agent):
         "seed": seed,
     }
     return render_template("create_agent.html", clone=True, agent=agent)
+
+
+@app.route("/delete-agent/<agent_id>", methods=["GET"])
+def delete_agent(agent_id):
+    logger.info("Delete agent endpoint called for agent ID: %s", agent_id)
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        logger.warning("User not authenticated, redirecting to signup")
+        return redirect("/signup")
+    
+    try:
+        user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+        # Call the delete_bot/{bot_id} endpoint
+        endpoint = "delete_bot"
+        logger.info("Calling API endpoint: %s", endpoint)
+        
+        data = {"bot_id": agent_id, "user": user}
+        with api_request(endpoint, method="DELETE", id_token=id_token, data=data) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                logger.info("Successfully deleted agent with ID: %s. Response: %s", agent_id, response_data)
+                flash("Agent successfully deleted", "success")
+            else:
+                error_msg = f"Failed to delete agent: {r.status_code}"
+                try:
+                    error_data = r.json()
+                    if "message" in error_data:
+                        error_msg = error_data["message"]
+                except Exception:
+                    pass
+                logger.error("Failed to delete agent: %s - %s", r.status_code, r.text)
+                flash(error_msg, "error")
+    except Exception as e:
+        logger.exception("Error deleting agent: %s", str(e))
+        flash(f"Error deleting agent: {str(e)}", "error")
+    
+    # Redirect back to the agents page
+    return redirect("/agents")

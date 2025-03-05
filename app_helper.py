@@ -84,7 +84,6 @@ def api_request(
     timeout=None,
     stream=None,
 ) -> requests.Response:
-    api_url = os.environ["OPB_API_URL"]
     headers = {}
     if id_token:
         headers["Authorization"] = f"Bearer {id_token}"
@@ -92,6 +91,8 @@ def api_request(
     logger.info("Making %s request to /%s", method, endpoint)
     if method == "GET":
         return requests.get(url, headers=headers, params=data, timeout=timeout, stream=stream)
+    elif method == "DELETE":
+        return requests.delete(url, headers=headers, json=data, timeout=timeout, stream=stream)
     return requests.post(url, headers=headers, json=data, files=files, params=params, timeout=timeout, stream=stream)
 
 
