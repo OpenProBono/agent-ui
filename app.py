@@ -569,7 +569,7 @@ def create_agent():
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     if request.method == "GET":
         return render_template("create_agent.html")
     # Retrieve core fields
@@ -618,6 +618,7 @@ def create_agent():
         "search_tools": search_tools,
         "vdb_tools": vdb_tools,
         "chat_model": chat_model,
+        "user": user,
     }
     if system_prompt:
         bot_data["system_prompt"] = system_prompt
