@@ -334,7 +334,8 @@ def get_sessions():
 
         for session_id in request.args.getlist("ids[]"):
             logger.info("Fetching session info for session ID %s", session_id)
-            data = {"session_id": session_id}
+            user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+            data = {"session_id": session_id, "user": user}
             with api_request("fetch_session", id_token=id_token, data=data) as r:
                 r.raise_for_status()
                 session_data = r.json()
@@ -359,7 +360,8 @@ def get_session_messages(session_id):
         return redirect("/signup")
 
     try:
-        data = {"session_id": session_id}
+        user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+        data = {"session_id": session_id, "user": user}
         with api_request("fetch_session_formatted_history", id_token=id_token, data=data) as r:
             r.raise_for_status()
             session_data = r.json()
@@ -399,12 +401,14 @@ def feedback():
     feedback_data = loads(request.form.get("data"))
     feedback_index = request.form.get("index")
     session_id = request.form.get("sessionId")
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     data = {
         "feedback_text": feedback_data["comment"],
         "session_id": session_id,
         "feedback_type": feedback_data["type"],
         "message_index": feedback_index,
         "categories": feedback_data["categories"] if feedback_data["type"] == "dislike" else [],
+        "user": user
     }
     try:
         with api_request("session_feedback", id_token=id_token, data=data) as r:
@@ -446,6 +450,7 @@ def search(collection):
         "collection": collection,
         "query": semantic,
         "k": 100,
+        "user": user
     }
     if keyword:
         data["keyword_query"] = keyword
@@ -505,7 +510,11 @@ def manage(collection):
     page = request.args.get("page", 1, int)
     per_page = request.args.get("per_page", 50, int)
     params = {"page": page, "per_page": per_page}
-    data = {"collection": collection}
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid")
+    }
+    data = {"collection": collection, "user": user}
     if keyword:
         data["keyword_query"] = keyword
     if jurisdictions and len(jurisdictions) != len(JURISDICTIONS):
@@ -534,11 +543,7 @@ def manage(collection):
     ]
     end = time.time()
     elapsed = str(round(end - start, 5))
-    email = session.get("email")
-    user = {
-        "email": email,
-        "firebase_uid": session.get("firebase_uid")
-    }
+    
     return render_template(
         "manage_collection.html",
         collection=collection,
