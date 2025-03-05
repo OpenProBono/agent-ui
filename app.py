@@ -709,17 +709,20 @@ def delete_agent(agent_id):
         return redirect("/signup")
     
     try:
-        user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
         # Call the delete_bot/{bot_id} endpoint
-        endpoint = "delete_bot"
+        endpoint = f"delete_bot/{agent_id}"
         logger.info("Calling API endpoint: %s", endpoint)
         
-        data = {"bot_id": agent_id, "user": user}
-        with api_request(endpoint, method="DELETE", id_token=id_token, data=data) as r:
+        with api_request(endpoint, method="DELETE", id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
-                logger.info("Successfully deleted agent with ID: %s. Response: %s", agent_id, response_data)
-                flash("Agent successfully deleted", "success")
+                if("message" in response_data and response_data["message"] == "Success"):
+                    logger.info("Successfully deleted agent with ID: %s. Response: %s", agent_id, response_data)
+                    flash("Agent successfully deleted", "success")
+                else:
+                    error_msg = f"Failed to delete agent: {response_data["message"]}"
+                    logger.info(error_msg)
+                    flash(error_msg, "error")
             else:
                 error_msg = f"Failed to delete agent: {r.status_code}"
                 try:
