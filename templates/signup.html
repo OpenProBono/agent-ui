@@ -85,6 +85,47 @@
         }
         .error { color: red; }
         .message { color: green; }
+        .forgot-password {
+            text-align: center;
+            margin-top: 10px;
+            cursor: pointer;
+            color: #4285F4;
+            text-decoration: underline;
+            font-size: 14px;
+        }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 400px;
+            border-radius: 5px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+        }
     </style>
 </head>
 <body>
@@ -95,6 +136,7 @@
             <input type="password" id="password" placeholder="Password" required />
             <button type="submit" id="submit-btn">Login</button>
         </form>
+        <div class="forgot-password" id="forgot-password-link">Forgot Password?</div>
         <div class="oauth-buttons">
             <button id="google-btn" class="google-btn">Sign in with Google</button>
             <button id="microsoft-btn" class="microsoft-btn">Sign in with Microsoft</button>
@@ -102,6 +144,21 @@
         <div class="toggle" id="toggle-link">Don't have an account? Sign up</div>
         <div class="error" id="error-message"></div>
         <div class="message" id="message"></div>
+    </div>
+
+    <!-- Password Reset Modal -->
+    <div id="password-reset-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Reset Password</h3>
+            <p>Enter your email address and we'll send you a link to reset your password.</p>
+            <form id="reset-password-form">
+                <input type="email" id="reset-email" placeholder="Email" required />
+                <button type="submit">Send Reset Link</button>
+            </form>
+            <div class="error" id="reset-error-message"></div>
+            <div class="message" id="reset-message"></div>
+        </div>
     </div>
 
     <!-- Include Firebase App and Authentication compat libraries -->
@@ -125,6 +182,12 @@
         const toggleLink = document.getElementById('toggle-link');
         const errorMsg = document.getElementById('error-message');
         const messageDiv = document.getElementById('message');
+        const forgotPasswordLink = document.getElementById('forgot-password-link');
+        const passwordResetModal = document.getElementById('password-reset-modal');
+        const resetPasswordForm = document.getElementById('reset-password-form');
+        const resetErrorMsg = document.getElementById('reset-error-message');
+        const resetMessageDiv = document.getElementById('reset-message');
+        const closeModalBtn = document.querySelector('.close');
 
         // Control flag: true = Login, false = Sign Up
         let isLogin = true;
@@ -136,10 +199,12 @@
                 formTitle.textContent = 'Login';
                 submitBtn.textContent = 'Login';
                 toggleLink.textContent = "Don't have an account? Sign up";
+                forgotPasswordLink.style.display = 'block';
             } else {
                 formTitle.textContent = 'Create Account';
                 submitBtn.textContent = 'Sign Up';
                 toggleLink.textContent = "Already have an account? Login";
+                forgotPasswordLink.style.display = 'none';
             }
             // Clear messages and reset form
             errorMsg.textContent = '';
@@ -213,6 +278,44 @@
                     errorMsg.textContent = error.message;
                     console.error("Microsoft sign in error:", error);
                 });
+        });
+
+        // Password Reset Modal Functions
+        forgotPasswordLink.addEventListener('click', () => {
+            passwordResetModal.style.display = 'block';
+            resetErrorMsg.textContent = '';
+            resetMessageDiv.textContent = '';
+            resetPasswordForm.reset();
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            passwordResetModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (event) => {
+            if (event.target === passwordResetModal) {
+                passwordResetModal.style.display = 'none';
+            }
+        });
+
+        // Handle password reset form submission
+        resetPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            resetErrorMsg.textContent = '';
+            resetMessageDiv.textContent = '';
+
+            const email = document.getElementById('reset-email').value;
+
+            try {
+                await auth.sendPasswordResetEmail(email);
+                resetMessageDiv.textContent = 'Password reset email sent! Check your inbox.';
+                setTimeout(() => {
+                    passwordResetModal.style.display = 'none';
+                }, 3000);
+            } catch (error) {
+                resetErrorMsg.textContent = error.message;
+                console.error("Password reset error:", error);
+            }
         });
     </script>
 </body>
