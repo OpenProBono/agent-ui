@@ -73,6 +73,7 @@ logger = logging.getLogger("logger")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
+api_url = os.environ["OPB_API_URL"]
 
 def api_request(
     endpoint,
