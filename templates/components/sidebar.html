@@ -1,0 +1,35 @@
+<!-- Sidebar Component -->
+<div class="sidebar">
+    <h5 class="text-center mb-3">OpenProBono</h5>
+    <a href="/dashboard" id="dashboard-link">Dashboard</a>
+    <a href="/agents" id="agents-link">My Agents</a>
+    <a href="/resources" id="resources-link">Resources</a>
+    <a href="/users" id="users-link">Users</a>
+    <a href="/sessions-page" id="sessions-link">My Sessions</a>
+</div>
+
+<script>
+    // Set active link based on current URL
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentPath = window.location.pathname;
+        
+        // Remove all active classes first
+        document.querySelectorAll('.sidebar a').forEach(link => {
+            link.classList.remove('active');
+        });
+        
+        // Set active class based on current path
+        if (currentPath.includes('/dashboard')) {
+            document.getElementById('dashboard-link').classList.add('active');
+        } else if (currentPath.includes('/agents') || currentPath.includes('/agent/') || 
+                  currentPath.includes('/create-agent') || currentPath.includes('/clone/')) {
+            document.getElementById('agents-link').classList.add('active');
+        } else if (currentPath.includes('/resources')) {
+            document.getElementById('resources-link').classList.add('active');
+        } else if (currentPath.includes('/users')) {
+            document.getElementById('users-link').classList.add('active');
+        } else if (currentPath.includes('/sessions-page') || currentPath.includes('/session/')) {
+            document.getElementById('sessions-link').classList.add('active');
+        }
+    });
+</script> 

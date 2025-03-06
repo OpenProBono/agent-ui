@@ -352,6 +352,44 @@ def get_sessions():
         return jsonify({"error": "Failed to fetch sessions."}), 400
 
 
+@app.route("/sessions-page", methods=["GET"])
+def sessions_page():
+    """Page to view all the user's previous chat sessions with filtering capability."""
+    logger.info("Sessions page endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Get all available bots for filtering options
+    bots = {}
+    try:
+        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "data" in response_data:
+                    bots = response_data["data"]
+    except Exception:
+        logger.exception("Failed to fetch bots for sessions page.")
+    
+    # Fetch all sessions for this user
+    sessions = []
+    try:
+        with api_request("fetch_sessions", method="POST", data={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "sessions" in response_data:
+                    sessions = response_data["sessions"]
+                    logger.info(f"Fetched {len(sessions)} sessions for user")
+    except Exception:
+        logger.exception("Failed to fetch sessions for user")
+    
+    return render_template("sessions.html", user=user, bots=bots, sessions=sessions)
+
+
 @app.route("/get_session_messages/<session_id>", methods=["GET"])
 def get_session_messages(session_id):
     logger.info("Session messages endpoint called for session ID %s", session_id)
@@ -781,3 +819,103 @@ def delete_agent(agent_id):
     
     # Redirect back to the agents page
     return redirect("/agents")
+
+
+@app.route("/export_sessions", methods=["POST"])
+def export_sessions():
+    """Export multiple sessions with their full data including messages."""
+    logger.info("Export sessions endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    # Get user info
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Get session IDs from request
+    try:
+        request_data = request.get_json()
+        if not request_data or not isinstance(request_data, dict) or "session_ids" not in request_data:
+            return jsonify({"error": "Missing session_ids parameter"}), 400
+        
+        session_ids = request_data["session_ids"]
+        if not isinstance(session_ids, list) or not session_ids:
+            return jsonify({"error": "session_ids must be a non-empty list"}), 400
+        
+        logger.info(f"Exporting {len(session_ids)} sessions")
+        
+        # Get all available bots to retrieve bot names
+        bots = {}
+        try:
+            with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                if r.status_code == 200:
+                    response_data = r.json()
+                    if response_data.get("message") == "Success" and "data" in response_data:
+                        bots = response_data["data"]
+        except Exception:
+            logger.exception("Failed to fetch bots for export sessions.")
+        
+        # Fetch data for each session
+        exported_sessions = []
+        for session_id in session_ids:
+            try:
+                # Get session metadata
+                session_data = {}
+                with api_request("fetch_session", id_token=id_token, data={"session_id": session_id, "user": user}) as r:
+                    if r.status_code == 200:
+                        session_data = r.json()
+                    else:
+                        logger.warning(f"Failed to fetch session {session_id}: {r.status_code}")
+                        continue
+                
+                # Get session messages using internal request to our own endpoint
+                messages_url = f"{request.host_url.rstrip('/')}/get_session_messages/{session_id}"
+                headers = {"Cookie": f"session={request.cookies.get('session', '')}"}
+                
+                try:
+                    messages_response = requests.get(messages_url, headers=headers, timeout=10)
+                    if messages_response.status_code == 200:
+                        messages_data = messages_response.json()
+                        # Add messages to session data
+                        session_data["messages"] = messages_data.get("history", [])
+                    else:
+                        logger.warning(f"Failed to fetch messages for session {session_id}: {messages_response.status_code}")
+                        session_data["messages"] = []
+                except Exception as msg_err:
+                    logger.exception(f"Error fetching messages for session {session_id}: {str(msg_err)}")
+                    session_data["messages"] = []
+                
+                # Get bot name if available
+                bot_id = session_data.get("bot_id", "")
+                bot_name = "Unknown Agent"
+                if bot_id and bot_id in bots:
+                    bot_name = bots[bot_id].get("name", "Unknown Agent")
+                
+                # Add to exported sessions
+                exported_sessions.append({
+                    "session_id": session_id,
+                    "bot_id": bot_id,
+                    "bot_name": bot_name,
+                    "title": session_data.get("title", "Untitled Chat"),
+                    "timestamp": session_data.get("timestamp", ""),
+                    "messages": session_data.get("messages", [])
+                })
+                
+            except Exception as e:
+                logger.exception(f"Error exporting session {session_id}: {str(e)}")
+                # Continue with other sessions even if one fails
+        
+        if not exported_sessions:
+            return jsonify({"error": "Failed to export any sessions"}), 500
+        
+        return jsonify({
+            "message": "Success",
+            "count": len(exported_sessions),
+            "sessions": exported_sessions
+        })
+        
+    except Exception as e:
+        logger.exception(f"Export sessions endpoint error: {str(e)}")
+        return jsonify({"error": "Failed to export sessions"}), 500
