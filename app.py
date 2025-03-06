@@ -44,10 +44,13 @@ def index():
         "searches_completed": 45,
         "file_storage_used": "2 GB",
     }
+    id_token = session.get("id_token")
     user = {
         "email": session.get("email"),
         "firebase_uid": session.get("firebase_uid")
     }
+    if(not id_token):
+        return redirect("/signup")
     return render_template("index.html", agents=agents, metrics=metrics, user=user)
 
 
@@ -862,10 +865,10 @@ def export_sessions():
         for session_id in session_ids:
             try:
                 # Get session metadata
-                session_data = {}
+                session_metadata = {}
                 with api_request("fetch_session", id_token=id_token, data={"session_id": session_id, "user": user}) as r:
                     if r.status_code == 200:
-                        session_data = r.json()
+                        session_metadata = r.json()
                     else:
                         logger.warning(f"Failed to fetch session {session_id}: {r.status_code}")
                         continue
@@ -879,16 +882,16 @@ def export_sessions():
                     if messages_response.status_code == 200:
                         messages_data = messages_response.json()
                         # Add messages to session data
-                        session_data["messages"] = messages_data.get("history", [])
+                        session_metadata["messages"] = messages_data.get("history", [])
                     else:
                         logger.warning(f"Failed to fetch messages for session {session_id}: {messages_response.status_code}")
-                        session_data["messages"] = []
+                        session_metadata["messages"] = []
                 except Exception as msg_err:
                     logger.exception(f"Error fetching messages for session {session_id}: {str(msg_err)}")
-                    session_data["messages"] = []
+                    session_metadata["messages"] = []
                 
                 # Get bot name if available
-                bot_id = session_data.get("bot_id", "")
+                bot_id = session_metadata.get("bot_id", "")
                 bot_name = "Unknown Agent"
                 if bot_id and bot_id in bots:
                     bot_name = bots[bot_id].get("name", "Unknown Agent")
@@ -898,9 +901,9 @@ def export_sessions():
                     "session_id": session_id,
                     "bot_id": bot_id,
                     "bot_name": bot_name,
-                    "title": session_data.get("title", "Untitled Chat"),
-                    "timestamp": session_data.get("timestamp", ""),
-                    "messages": session_data.get("messages", [])
+                    "title": session_metadata.get("title", "Untitled Chat"),
+                    "timestamp": session_metadata.get("timestamp", ""),
+                    "messages": session_metadata.get("messages", [])
                 })
                 
             except Exception as e:
@@ -919,3 +922,153 @@ def export_sessions():
     except Exception as e:
         logger.exception(f"Export sessions endpoint error: {str(e)}")
         return jsonify({"error": "Failed to export sessions"}), 500
+
+@app.route("/eval-datasets", methods=["GET"])
+def eval_datasets():
+    """Page to view all evaluation datasets."""
+    logger.info("Eval datasets endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Fetch all evaluation datasets for this user
+    datasets = []
+    try:
+        with api_request("get_user_datasets", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "datasets" in response_data:
+                    datasets = response_data["datasets"]
+                    logger.info(f"Fetched {len(datasets)} evaluation datasets for user")
+    except Exception:
+        logger.exception("Failed to fetch evaluation datasets for user")
+    
+    return render_template("eval_datasets.html", user=user, datasets=datasets)
+
+
+@app.route("/create-eval-dataset", methods=["GET", "POST"])
+def create_eval_dataset():
+    """Page to create a new evaluation dataset."""
+    logger.info("Create eval dataset endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    if request.method == "GET":
+        # Get all available bots for selection
+        bots = {}
+        try:
+            with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                if r.status_code == 200:
+                    response_data = r.json()
+                    if response_data.get("message") == "Success" and "data" in response_data:
+                        bots = response_data["data"]
+                        logger.info(f"Fetched {len(bots)} bots for eval dataset creation")
+        except Exception:
+            logger.exception("Failed to fetch bots for eval dataset creation")
+        
+        return render_template("create_eval_dataset.html", user=user, bots=bots)
+    
+    # Handle POST request to create a new dataset
+    try:
+        # Get form data
+        name = request.form.get("name")
+        description = request.form.get("description", "")
+        inputs_text = request.form.get("inputs", "")
+        bot_ids = request.form.getlist("bot_ids")
+        
+        # Process inputs (split by newlines and remove empty lines)
+        inputs = [line.strip() for line in inputs_text.split("\n") if line.strip()]
+        
+        # Validate required fields
+        if not name or not inputs or not bot_ids:
+            flash("Please provide a name, at least one input, and select at least one bot.", "error")
+            return redirect("/create-eval-dataset")
+        
+        # Create dataset object
+        dataset_data = {
+            "name": name,
+            "description": description,
+            "inputs": inputs,
+            "bot_ids": bot_ids,
+            "user": user
+        }
+        
+        # Call API to create the dataset and run evaluations
+        with api_request("run_eval_dataset", method="POST", data=dataset_data, id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+            
+            if result.get("message") == "Success" and "dataset_id" in result:
+                flash(f"Evaluation dataset '{name}' created successfully! Evaluations are running in the background.", "success")
+                return redirect(f"/eval-dataset/{result['dataset_id']}")
+            else:
+                flash(f"Failed to create evaluation dataset: {result.get('message', 'Unknown error')}", "error")
+                return redirect("/create-eval-dataset")
+                
+    except Exception as e:
+        logger.exception(f"Error creating evaluation dataset: {str(e)}")
+        flash(f"Error creating evaluation dataset: {str(e)}", "error")
+        return redirect("/create-eval-dataset")
+
+
+@app.route("/eval-dataset/<dataset_id>", methods=["GET"])
+def view_eval_dataset(dataset_id):
+    """Page to view a specific evaluation dataset and compare outputs."""
+    logger.info(f"View eval dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Fetch the dataset details
+    try:
+        with api_request(f"get_dataset_sessions/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                dataset = r.json()
+                if dataset.get("message") == "Success" and "dataset" in dataset:
+                    # Get all available bots to retrieve bot names
+                    bots = {}
+                    try:
+                        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                            if r.status_code == 200:
+                                response_data = r.json()
+                                if response_data.get("message") == "Success" and "data" in response_data:
+                                    bots = response_data["data"]
+                    except Exception:
+                        logger.exception("Failed to fetch bots for eval dataset view")
+                    
+                    # Add bot names to the dataset
+                    for session_id, session_info in dataset["dataset"]["sessions"].items():
+                        bot_id = session_info.get("bot_id", "")
+                        if bot_id in bots:
+                            session_info["bot_name"] = bots[bot_id].get("name", "Unknown Bot")
+                        else:
+                            session_info["bot_name"] = f"Bot ID: {bot_id}"
+                    logger.info(dataset["dataset"]["bot_ids"])
+                    logger.info(dataset["dataset"]["sessions"])
+                    logger.info("ada")
+                    return render_template("view_eval_dataset.html", 
+                                          user=user, 
+                                          dataset=dataset["dataset"], 
+                                          bots=bots)
+                else:
+                    flash(f"Failed to fetch evaluation dataset: {dataset.get('message', 'Unknown error')}", "error")
+            else:
+                flash(f"Failed to fetch evaluation dataset: {r.status_code}", "error")
+    except Exception as e:
+        logger.exception(f"Error fetching evaluation dataset: {str(e)}")
+        flash(f"Error fetching evaluation dataset: {str(e)}", "error")
+    
+    return redirect("/eval-datasets")

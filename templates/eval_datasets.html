@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluation Datasets{% endblock %}
+
+{% block header_title %}Evaluation Datasets{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Evaluation Datasets</h1>
+        <a href="/create-eval-dataset" class="btn btn-primary">Create New Dataset</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% if datasets %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Inputs</th>
+                        <th>Bots</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for id, dataset in datasets.items() %}
+                    <tr>
+                        <td>{{ dataset.name }}</td>
+                        <td>{{ dataset.description or "No description" }}</td>
+                        <td>{{ dataset.inputs|length }}</td>
+                        <td>{{ dataset.bot_ids|length }}</td>
+                        <td>
+                            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length %}
+                            {% set completed_count = dataset.sessions|default([])|length %}
+                            {% set progress_percent = (completed_count / total_expected * 100) if total_expected > 0 else 0 %}
+                            
+                            {% if progress_percent < 100 %}
+                                <div class="d-flex align-items-center">
+                                    <div class="progress flex-grow-1" style="height: 10px;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="pb-{{ loop.index }}"></div>
+                                    </div>
+                                    <span class="ms-2 small">{{ progress_percent|int }}%</span>
+                                </div>
+                                <script>
+                                    document.getElementById('pb-{{ loop.index }}').style.width = '{{ progress_percent }}%';
+                                </script>
+                            {% else %}
+                                <span class="badge bg-success">Complete</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ dataset.created_at|default("N/A") }}</td>
+                        <td>
+                            <a href="/eval-dataset/{{ id }}" class="btn btn-sm btn-info">View Results</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            <p>You don't have any evaluation datasets yet.</p>
+            <p>Create a new dataset to compare responses from different bots on the same inputs.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-refresh the page every 60 seconds if there are in-progress datasets
+    document.addEventListener('DOMContentLoaded', function() {
+        const hasInProgressDatasets = document.querySelectorAll('.progress-bar-animated').length > 0;
+        
+        if (hasInProgressDatasets) {
+            setTimeout(function() {
+                location.reload();
+            }, 60000); // Refresh every 60 seconds
+        }
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Create Evaluation Dataset{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Create Evaluation Dataset</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> <strong>Note:</strong> Evaluation datasets run asynchronously. Depending on the number of inputs and bots, it may take several minutes for all results to be available.
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="/create-eval-dataset">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Dataset Name*</label>
+                    <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                    <div class="form-text">Optional: Provide a description for this evaluation dataset</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="inputs" class="form-label">Inputs*</label>
+                    <textarea class="form-control" id="inputs" name="inputs" rows="8" required></textarea>
+                    <div class="form-text">Enter one input per line. Each input will be sent to all selected bots.</div>
+                    <div class="form-text text-warning"><i class="fas fa-exclamation-triangle"></i> Processing time increases with the number of inputs and bots.</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Select Bots*</label>
+                    <div class="card">
+                        <div class="card-body">
+                            {% if bots %}
+                                <div class="row">
+                                    {% for bot_id, bot in bots.items() %}
+                                    <div class="col-md-6 mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="bot_ids" value="{{ bot_id }}" id="bot-{{ bot_id }}">
+                                            <label class="form-check-label" for="bot-{{ bot_id }}">
+                                                {{ bot.name }} ({{ bot_id }})
+                                            </label>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="alert alert-warning">
+                                    No bots available. Please create a bot first.
+                                </div>
+                            {% endif %}
+                            
+                            <div class="mt-3">
+                                <label for="manual_bot_id" class="form-label">Or add a bot ID manually:</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="manual_bot_id" placeholder="Enter bot ID">
+                                    <button type="button" class="btn btn-outline-secondary" id="add_bot_btn">Add</button>
+                                </div>
+                            </div>
+                            
+                            <div id="manual_bots_container" class="mt-2">
+                                <!-- Manually added bots will appear here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="/eval-datasets" class="btn btn-secondary me-md-2">Cancel</a>
+                    <button type="submit" class="btn btn-primary" id="submit-btn">Create Dataset</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle manually adding bot IDs
+        const addBotBtn = document.getElementById('add_bot_btn');
+        const manualBotIdInput = document.getElementById('manual_bot_id');
+        const manualBotsContainer = document.getElementById('manual_bots_container');
+        const form = document.querySelector('form');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        addBotBtn.addEventListener('click', function() {
+            const botId = manualBotIdInput.value.trim();
+            if (botId) {
+                // Check if this bot ID is already in the list
+                const existingInput = document.querySelector(`input[name="bot_ids"][value="${botId}"]`);
+                if (existingInput) {
+                    existingInput.checked = true;
+                    manualBotIdInput.value = '';
+                    return;
+                }
+                
+                // Create a new checkbox for this bot ID
+                const div = document.createElement('div');
+                div.className = 'form-check';
+                div.innerHTML = `
+                    <input class="form-check-input" type="checkbox" name="bot_ids" value="${botId}" id="bot-manual-${botId}" checked>
+                    <label class="form-check-label" for="bot-manual-${botId}">
+                        ${botId} (manually added)
+                    </label>
+                `;
+                manualBotsContainer.appendChild(div);
+                manualBotIdInput.value = '';
+            }
+        });
+        
+        // Allow pressing Enter to add a bot
+        manualBotIdInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addBotBtn.click();
+            }
+        });
+        
+        // Show loading state when form is submitted
+        form.addEventListener('submit', function() {
+            // Count inputs and bots to estimate time
+            const inputs = document.getElementById('inputs').value.trim().split('\n').filter(line => line.trim()).length;
+            const bots = document.querySelectorAll('input[name="bot_ids"]:checked').length;
+            
+            if (inputs > 0 && bots > 0) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating dataset...';
+                
+                // Add a loading message
+                const loadingMsg = document.createElement('div');
+                loadingMsg.className = 'alert alert-warning mt-3';
+                loadingMsg.innerHTML = `
+                    <p><strong>Creating evaluation dataset with ${inputs} inputs and ${bots} bots.</strong></p>
+                    <p>This may take several minutes to complete. You'll be redirected to the results page once the dataset is created.</p>
+                `;
+                form.appendChild(loadingMsg);
+            }
+        });
+    });
+</script>
+{% endblock %} 
