@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+
+{% block title %}Labeled Dataset Results: {{ dataset.name }}{% endblock %}
+
+{% block header_title %}Labeled Dataset Results: {{ dataset.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{{ dataset.name }}</h1>
+        <div>
+            <a href="/label-eval-dataset/{{ dataset_id }}" class="btn btn-primary me-2">Continue Labeling</a>
+            <a href="/labeled-eval-datasets" class="btn btn-secondary">Back to Labeled Datasets</a>
+        </div>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            {% if dataset.description %}
+                <p><strong>Description:</strong> {{ dataset.description }}</p>
+            {% endif %}
+            <p><strong>Inputs:</strong> {{ dataset.inputs|length }}</p>
+            <p><strong>Bots:</strong> {{ dataset.bot_ids|length }}</p>
+            {% if dataset.created_at %}
+                <p><strong>Created:</strong> {{ dataset.created_at }}</p>
+            {% endif %}
+            {% if dataset.last_updated %}
+                <p><strong>Last Updated:</strong> {{ dataset.last_updated }}</p>
+            {% endif %}
+            
+            <!-- Labeling Progress indicator -->
+            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length %}
+            {% set labeled_count = 0 %}
+            {% for session in dataset.sessions %}
+                {% if session.labels is defined and session.labels %}
+                    {% set labeled_count = labeled_count + 1 %}
+                {% endif %}
+            {% endfor %}
+            {% set progress_percent = (labeled_count / total_expected * 100) if total_expected > 0 else 0 %}
+            
+            <div class="mt-3">
+                <h5>Labeling Progress:</h5>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar {% if progress_percent < 100 %}progress-bar-striped progress-bar-animated{% endif %}" 
+                         id="main-progress-bar" data-progress="{{ progress_percent|int }}" data-width="{{ progress_percent }}">
+                        {{ labeled_count }} / {{ total_expected }} ({{ progress_percent|int }}%)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Summary Section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="mb-0">Results Summary</h2>
+        </div>
+        <div class="card-body">
+            <ul class="nav nav-tabs" id="summaryTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="thumbs-tab" data-bs-toggle="tab" data-bs-target="#thumbs-summary" type="button" role="tab" aria-controls="thumbs-summary" aria-selected="true">Thumbs Up/Down</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="scores-tab" data-bs-toggle="tab" data-bs-target="#scores-summary" type="button" role="tab" aria-controls="scores-summary" aria-selected="false">Scores</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="ranking-tab" data-bs-toggle="tab" data-bs-target="#ranking-summary" type="button" role="tab" aria-controls="ranking-summary" aria-selected="false">Rankings</button>
+                </li>
+            </ul>
+            <div class="tab-content p-3" id="summaryTabsContent">
+                <!-- Thumbs Up/Down Summary -->
+                <div class="tab-pane fade show active" id="thumbs-summary" role="tabpanel" aria-labelledby="thumbs-tab">
+                    <div class="row">
+                        {% for bot_id in dataset.bot_ids %}
+                            {% set bot_name = "Unknown Bot" %}
+                            {% if bot_id in bots %}
+                                {% set bot_name = bots[bot_id].name %}
+                            {% endif %}
+                            
+                            {% set thumbs_up = 0 %}
+                            {% set thumbs_down = 0 %}
+                            
+                            {% for session in dataset.sessions %}
+                                {% if session.bot_id == bot_id and session.labels is defined and session.labels.thumbs is defined %}
+                                    {% if session.labels.thumbs == 'up' %}
+                                        {% set thumbs_up = thumbs_up + 1 %}
+                                    {% else %}
+                                        {% set thumbs_down = thumbs_down + 1 %}
+                                    {% endif %}
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% set total_thumbs = thumbs_up + thumbs_down %}
+                            {% set thumbs_up_percent = (thumbs_up / total_thumbs * 100) if total_thumbs > 0 else 0 %}
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <strong>{{ bot_name }}</strong> ({{ bot_id }})
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <div>
+                                                <i class="fas fa-thumbs-up text-success"></i> {{ thumbs_up }} ({{ thumbs_up_percent|int }}%)
+                                            </div>
+                                            <div>
+                                                <i class="fas fa-thumbs-down text-danger"></i> {{ thumbs_down }} ({{ 100 - thumbs_up_percent|int }}%)
+                                            </div>
+                                        </div>
+                                        <div class="progress" style="height: 30px;">
+                                            <div class="progress-bar bg-success" data-width="{{ thumbs_up_percent }}">
+                                                {{ thumbs_up_percent|int }}%
+                                            </div>
+                                            <div class="progress-bar bg-danger" data-width="{{ 100 - thumbs_up_percent }}">
+                                                {{ 100 - thumbs_up_percent|int }}%
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Scores Summary -->
+                <div class="tab-pane fade" id="scores-summary" role="tabpanel" aria-labelledby="scores-tab">
+                    <div class="row">
+                        {% for bot_id in dataset.bot_ids %}
+                            {% set bot_name = "Unknown Bot" %}
+                            {% if bot_id in bots %}
+                                {% set bot_name = bots[bot_id].name %}
+                            {% endif %}
+                            
+                            {% set total_score = 0 %}
+                            {% set score_count = 0 %}
+                            
+                            {% for session in dataset.sessions %}
+                                {% if session.bot_id == bot_id and session.labels is defined and session.labels.score is defined %}
+                                    {% set total_score = total_score + session.labels.score|int %}
+                                    {% set score_count = score_count + 1 %}
+                                {% endif %}
+                            {% endfor %}
+                            
+                            {% set avg_score = (total_score / score_count) if score_count > 0 else 0 %}
+                            {% set score_percent = (avg_score / 10 * 100) if avg_score > 0 else 0 %}
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <strong>{{ bot_name }}</strong> ({{ bot_id }})
+                                    </div>
+                                    <div class="card-body">
+                                        <h3 class="text-center mb-3">Average Score: {{ "%.1f"|format(avg_score) }}/10</h3>
+                                        <div class="progress" style="height: 30px;">
+                                            <div class="progress-bar" 
+                                                 data-width="{{ score_percent }}"
+                                                 data-color="{{ '#28a745' if avg_score >= 7 else '#ffc107' if avg_score >= 4 else '#dc3545' }}">
+                                                {{ "%.1f"|format(avg_score) }}/10
+                                            </div>
+                                        </div>
+                                        <div class="text-muted text-center mt-2">
+                                            Based on {{ score_count }} ratings
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <!-- Rankings Summary -->
+                <div class="tab-pane fade" id="ranking-summary" role="tabpanel" aria-labelledby="ranking-tab">
+                    <div class="row">
+                        {% set rank_counts = {} %}
+                        {% set total_rankings = 0 %}
+                        {% set input_rankings = {} %}
+                        
+                        {% for session in dataset.sessions %}
+                            {% if session.labels is defined and session.labels.rank is defined %}
+                                {% set input_idx = session.input_idx|string %}
+                                {% if input_idx not in input_rankings %}
+                                    {% set _ = input_rankings.update({input_idx: []}) %}
+                                {% endif %}
+                                {% set _ = input_rankings[input_idx].append(session.bot_id) %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% for input_idx, ranked_bots in input_rankings.items() %}
+                            {% if ranked_bots|length > 0 %}
+                                {% set total_rankings = total_rankings + 1 %}
+                                {% for i in range(ranked_bots|length) %}
+                                    {% set bot_id = ranked_bots[i] %}
+                                    {% if bot_id not in rank_counts %}
+                                        {% set _ = rank_counts.update({bot_id: [0, 0, 0, 0, 0]}) %}
+                                    {% endif %}
+                                    {% if i < 5 %}
+                                        {% set _ = rank_counts[bot_id][i].__iadd__(1) %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if total_rankings > 0 %}
+                            <div class="col-12 mb-4">
+                                <h4>Ranking Distribution</h4>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Bot</th>
+                                                <th>1st Place</th>
+                                                <th>2nd Place</th>
+                                                <th>3rd Place</th>
+                                                <th>4th Place</th>
+                                                <th>5th Place</th>
+                                                <th>Avg. Rank</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for bot_id in dataset.bot_ids %}
+                                                {% set bot_name = "Unknown Bot" %}
+                                                {% if bot_id in bots %}
+                                                    {% set bot_name = bots[bot_id].name %}
+                                                {% endif %}
+                                                
+                                                {% if bot_id in rank_counts %}
+                                                    {% set ranks = rank_counts[bot_id] %}
+                                                    {% set weighted_sum = ranks[0] * 1 + ranks[1] * 2 + ranks[2] * 3 + ranks[3] * 4 + ranks[4] * 5 %}
+                                                    {% set total_ranks = ranks[0] + ranks[1] + ranks[2] + ranks[3] + ranks[4] %}
+                                                    {% set avg_rank = (weighted_sum / total_ranks) if total_ranks > 0 else 0 %}
+                                                    
+                                                    <tr>
+                                                        <td><strong>{{ bot_name }}</strong></td>
+                                                        <td>{{ ranks[0] }} ({{ (ranks[0] / total_rankings * 100)|int }}%)</td>
+                                                        <td>{{ ranks[1] }} ({{ (ranks[1] / total_rankings * 100)|int }}%)</td>
+                                                        <td>{{ ranks[2] }} ({{ (ranks[2] / total_rankings * 100)|int }}%)</td>
+                                                        <td>{{ ranks[3] }} ({{ (ranks[3] / total_rankings * 100)|int }}%)</td>
+                                                        <td>{{ ranks[4] }} ({{ (ranks[4] / total_rankings * 100)|int }}%)</td>
+                                                        <td>{{ "%.2f"|format(avg_rank) }}</td>
+                                                    </tr>
+                                                {% else %}
+                                                    <tr>
+                                                        <td><strong>{{ bot_name }}</strong></td>
+                                                        <td>0 (0%)</td>
+                                                        <td>0 (0%)</td>
+                                                        <td>0 (0%)</td>
+                                                        <td>0 (0%)</td>
+                                                        <td>0 (0%)</td>
+                                                        <td>N/A</td>
+                                                    </tr>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="col-12">
+                                <div class="alert alert-info">
+                                    No ranking data available. Try ranking some responses first.
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Detailed Results Section -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="mb-0">Detailed Results</h2>
+        </div>
+        <div class="card-body">
+            {% if dataset.sessions and dataset.sessions|length > 0 %}
+                <div class="accordion" id="inputsAccordion">
+                    {% for input in dataset.inputs %}
+                        {% set i = loop.index0 %}
+                        {% set has_labels = false %}
+                        {% for session in dataset.sessions %}
+                            {% if session.input_idx == i and session.labels is defined and session.labels %}
+                                {% set has_labels = true %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="heading{{ i }}">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ i }}" aria-expanded="false" aria-controls="collapse{{ i }}">
+                                    <div class="d-flex justify-content-between w-100 me-3">
+                                        <span>Input #{{ i+1 }}: {{ input[:100] }}{% if input|length > 100 %}...{% endif %}</span>
+                                        {% if has_labels %}
+                                            <span class="badge bg-success">Labeled</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Not labeled</span>
+                                        {% endif %}
+                                    </div>
+                                </button>
+                            </h2>
+                            <div id="collapse{{ i }}" class="accordion-collapse collapse" aria-labelledby="heading{{ i }}" data-bs-parent="#inputsAccordion">
+                                <div class="accordion-body">
+                                    <div class="mb-3">
+                                        <h5>Input:</h5>
+                                        <div class="card">
+                                            <div class="card-body">
+                                                <pre class="mb-0">{{ input }}</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {% if has_labels %}
+                                        <div class="mb-3">
+                                            <h5>Labels:</h5>
+                                            <ul class="nav nav-tabs" id="labelTabs{{ i }}" role="tablist">
+                                                {% set has_thumbs = false %}
+                                                {% set has_scores = false %}
+                                                {% set has_ranks = false %}
+                                                
+                                                {% for session in dataset.sessions %}
+                                                    {% if session.input_idx == i and session.labels is defined %}
+                                                        {% if session.labels.thumbs is defined %}
+                                                            {% set has_thumbs = true %}
+                                                        {% endif %}
+                                                        {% if session.labels.score is defined %}
+                                                            {% set has_scores = true %}
+                                                        {% endif %}
+                                                        {% if session.labels.rank is defined %}
+                                                            {% set has_ranks = true %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                                
+                                                {% if has_thumbs %}
+                                                    <li class="nav-item" role="presentation">
+                                                        <button class="nav-link active" id="thumbs-tab{{ i }}" data-bs-toggle="tab" data-bs-target="#thumbs{{ i }}" type="button" role="tab" aria-controls="thumbs{{ i }}" aria-selected="true">Thumbs Up/Down</button>
+                                                    </li>
+                                                {% endif %}
+                                                {% if has_scores %}
+                                                    <li class="nav-item" role="presentation">
+                                                        <button class="nav-link {% if not has_thumbs %}active{% endif %}" id="scores-tab{{ i }}" data-bs-toggle="tab" data-bs-target="#scores{{ i }}" type="button" role="tab" aria-controls="scores{{ i }}" aria-selected="{% if not has_thumbs %}true{% else %}false{% endif %}">Scores</button>
+                                                    </li>
+                                                {% endif %}
+                                                {% if has_ranks %}
+                                                    <li class="nav-item" role="presentation">
+                                                        <button class="nav-link {% if not has_thumbs and not has_scores %}active{% endif %}" id="ranking-tab{{ i }}" data-bs-toggle="tab" data-bs-target="#ranking{{ i }}" type="button" role="tab" aria-controls="ranking{{ i }}" aria-selected="{% if not has_thumbs and not has_scores %}true{% else %}false{% endif %}">Ranking</button>
+                                                    </li>
+                                                {% endif %}
+                                            </ul>
+                                            <div class="tab-content p-3 border border-top-0 rounded-bottom" id="labelTabsContent{{ i }}">
+                                                {% if has_thumbs %}
+                                                    <div class="tab-pane fade show active" id="thumbs{{ i }}" role="tabpanel" aria-labelledby="thumbs-tab{{ i }}">
+                                                        <div class="row">
+                                                            {% for session in dataset.sessions %}
+                                                                {% if session.input_idx == i and session.labels is defined and session.labels.thumbs is defined %}
+                                                                    {% set bot_id = session.bot_id %}
+                                                                    {% set bot_name = "Unknown Bot" %}
+                                                                    {% if bot_id in bots %}
+                                                                        {% set bot_name = bots[bot_id].name %}
+                                                                    {% endif %}
+                                                                    
+                                                                    <div class="col-md-6 mb-3">
+                                                                        <div class="card">
+                                                                            <div class="card-header">
+                                                                                <strong>{{ bot_name }}</strong> ({{ bot_id }})
+                                                                            </div>
+                                                                            <div class="card-body">
+                                                                                <div class="d-flex justify-content-center">
+                                                                                    {% if session.labels.thumbs == 'up' %}
+                                                                                        <span class="badge bg-success p-3"><i class="fas fa-thumbs-up fa-2x"></i></span>
+                                                                                    {% else %}
+                                                                                        <span class="badge bg-danger p-3"><i class="fas fa-thumbs-down fa-2x"></i></span>
+                                                                                    {% endif %}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                                
+                                                {% if has_scores %}
+                                                    <div class="tab-pane fade {% if not has_thumbs %}show active{% endif %}" id="scores{{ i }}" role="tabpanel" aria-labelledby="scores-tab{{ i }}">
+                                                        <div class="row">
+                                                            {% for session in dataset.sessions %}
+                                                                {% if session.input_idx == i and session.labels is defined and session.labels.score is defined %}
+                                                                    {% set bot_id = session.bot_id %}
+                                                                    {% set bot_name = "Unknown Bot" %}
+                                                                    {% if bot_id in bots %}
+                                                                        {% set bot_name = bots[bot_id].name %}
+                                                                    {% endif %}
+                                                                    
+                                                                    <div class="col-md-6 mb-3">
+                                                                        <div class="card">
+                                                                            <div class="card-header">
+                                                                                <strong>{{ bot_name }}</strong> ({{ bot_id }})
+                                                                            </div>
+                                                                            <div class="card-body">
+                                                                                <h3 class="text-center">Score: {{ session.labels.score }}/10</h3>
+                                                                                <div class="progress" style="height: 30px;">
+                                                                                    <div class="progress-bar" 
+                                                                                         data-width="{{ session.labels.score|int * 10 }}"
+                                                                                         data-color="{{ '#28a745' if session.labels.score|int >= 7 else '#ffc107' if session.labels.score|int >= 4 else '#dc3545' }}">
+                                                                                        {{ session.labels.score }}/10
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                {% endif %}
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                                
+                                                {% if has_ranks %}
+                                                    <div class="tab-pane fade {% if not has_thumbs and not has_scores %}show active{% endif %}" id="ranking{{ i }}" role="tabpanel" aria-labelledby="ranking-tab{{ i }}">
+                                                        <div class="alert alert-info">
+                                                            <i class="fas fa-info-circle"></i> Responses are ranked from best (1) to worst.
+                                                        </div>
+                                                        
+                                                        {% set ranked_bots = [] %}
+                                                        {% for session in dataset.sessions %}
+                                                            {% if session.input_idx == i and session.labels is defined and session.labels.rank is defined %}
+                                                                {% set _ = ranked_bots.append(session.bot_id) %}
+                                                            {% endif %}
+                                                        {% endfor %}
+                                                        
+                                                        <div class="list-group">
+                                                            {% for rank, bot_id in ranked_bots|enumerate(1) %}
+                                                                {% set bot_name = "Unknown Bot" %}
+                                                                {% if bot_id in bots %}
+                                                                    {% set bot_name = bots[bot_id].name %}
+                                                                {% endif %}
+                                                                
+                                                                <div class="list-group-item">
+                                                                    <div class="d-flex w-100 justify-content-between">
+                                                                        <h5 class="mb-1">Rank #{{ rank }}: {{ bot_name }}</h5>
+                                                                        <small>{{ bot_id }}</small>
+                                                                    </div>
+                                                                    {% for session in dataset.sessions %}
+                                                                        {% if session.bot_id == bot_id and session.input_idx == i %}
+                                                                            <div class="mt-2 border-top pt-2">
+                                                                                <div class="response-content">
+                                                                                    {{ session.output_text|safe }}
+                                                                                </div>
+                                                                            </div>
+                                                                        {% endif %}
+                                                                    {% endfor %}
+                                                                </div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-warning">
+                                            <i class="fas fa-exclamation-triangle"></i> This input has not been labeled yet.
+                                            <a href="/label-eval-dataset/{{ dataset_id }}" class="btn btn-sm btn-primary ms-2">Label Now</a>
+                                        </div>
+                                    {% endif %}
+                                    
+                                    <h5 class="mt-4">Responses:</h5>
+                                    <div class="row">
+                                        {% for bot_id in dataset.bot_ids %}
+                                            {% for session in dataset.sessions %}
+                                                {% if session.bot_id == bot_id and session.input_idx == i %}
+                                                    <div class="col-md-6 mb-3">
+                                                        <div class="card h-100">
+                                                            <div class="card-header">
+                                                                {% set bot_name = "Unknown Bot" %}
+                                                                {% if bot_id in bots %}
+                                                                    {% set bot_name = bots[bot_id].name %}
+                                                                {% else %}
+                                                                    {% if session.bot_name is defined %}
+                                                                        {% set bot_name = session.bot_name %}
+                                                                    {% endif %}
+                                                                {% endif %}
+                                                                <strong>{{ bot_name }}</strong> ({{ bot_id }})
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <div class="response-content">
+                                                                    {{ session.output_text|safe }}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> No sessions have been added to this dataset yet.
+                    <a href="/label-eval-dataset/{{ dataset_id }}" class="btn btn-primary ms-2">Start Labeling</a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Apply styles from data attributes
+        document.querySelectorAll('[data-width]').forEach(function(el) {
+            el.style.width = el.getAttribute('data-width') + '%';
+        });
+        
+        document.querySelectorAll('[data-color]').forEach(function(el) {
+            el.style.backgroundColor = el.getAttribute('data-color');
+        });
+    });
+</script>
+{% endblock %} 

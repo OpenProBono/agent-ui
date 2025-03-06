@@ -2,6 +2,7 @@ import datetime
 import os
 import time
 from json import dumps, loads
+from typing import List
 
 import requests
 from flask import (
@@ -23,6 +24,7 @@ from app_helper import (
     generate_source_context,
     logger,
     organize_sources,
+    api_url,
 )
 
 app = Flask(__name__)
@@ -938,7 +940,7 @@ def eval_datasets():
     # Fetch all evaluation datasets for this user
     datasets = []
     try:
-        with api_request("get_user_datasets", method="GET", data={"user": user}, id_token=id_token) as r:
+        with api_request("get_user_datasets", method="GET", id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "datasets" in response_data:
@@ -1119,3 +1121,321 @@ def clone_eval_dataset(dataset_id):
         logger.exception("Failed to fetch bots for eval dataset creation")
     
     return render_template("create_eval_dataset.html", user=user, bots=bots, dataset=dataset)
+
+@app.route("/new-label-eval-dataset/<dataset_id>", methods=["GET"])
+def new_label_eval_dataset(dataset_id):
+    """Page to configure and create a labeled dataset."""
+    logger.info(f"New label eval dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Render the new template for configuring the labeled dataset
+    return render_template("new_label_eval_pop.html", dataset_id=dataset_id, user=user)
+
+# Add a new route to handle the form submission from new_label_eval_pop.html
+@app.route("/create-labeled-dataset/<dataset_id>", methods=["POST"])
+def create_labeled_dataset(dataset_id):
+    """Create a labeled dataset with multiple aspects."""
+    logger.info(f"Create labeled dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    # Get form data
+    dataset_name = request.form.get('dataset_name')
+    aspect_ids = request.form.getlist('aspect_ids[]')
+    aspect_names = request.form.getlist('aspect_names[]')
+    aspect_descriptions = request.form.getlist('aspect_descriptions[]')
+    aspect_types = request.form.getlist('aspect_types[]')
+    
+    # Log the received form data for debugging
+    logger.info(f"Received form data: name={dataset_name}, aspects count={len(aspect_ids)}")
+    logger.info(f"Aspect IDs: {aspect_ids}")
+    logger.info(f"Aspect Names: {aspect_names}")
+    logger.info(f"Aspect Types: {aspect_types}")
+    
+    if not dataset_name or not aspect_ids:
+        flash("Dataset name and at least one aspect are required", "error")
+        return redirect(f"/new-label-eval-dataset/{dataset_id}")
+    
+    # Prepare data for API request - match the expected format
+    labeling_aspects = []
+    for i in range(len(aspect_ids)):
+        aspect = {
+            'aspect_id': aspect_ids[i],
+            'name': aspect_names[i],
+            'description': aspect_descriptions[i] if aspect_descriptions[i] else None,
+            'type': aspect_types[i],
+            # Add the optional fields with default values
+            'rank_value': None,
+            'thumbs_value': None,
+            'score_value': None
+        }
+        labeling_aspects.append(aspect)
+        logger.info(f"Added aspect: {aspect}")
+    
+    try:
+        # Based on the validation error, FastAPI expects:
+        # 1. dataset_name and dataset_id as query parameters
+        # 2. The request body to be a list of labeling aspects
+        import requests
+        
+        url = f"{api_url}/create_labeled_dataset"
+        
+        # Add query parameters
+        params = {
+            'dataset_name': dataset_name,
+            'dataset_id': dataset_id
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {id_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Send the labeling_aspects as the request body (which should be a list)
+        logger.info(f"Making request to {url} with params={params}")
+        logger.info(f"Request body (list): {labeling_aspects}")
+        
+        response = requests.post(url, headers=headers, params=params, json=labeling_aspects)
+        
+        logger.info(f"API response status: {response.status_code}")
+        
+        # Log the response content for debugging
+        try:
+            response_content = response.json()
+            logger.info(f"API response content: {response_content}")
+        except Exception as e:
+            logger.error(f"Failed to parse response as JSON: {str(e)}")
+            logger.info(f"Raw response content: {response.text}")
+        
+        if response.status_code == 422:
+            # Handle validation errors specifically
+            error_detail = "Unknown validation error"
+            try:
+                response_json = response.json()
+                if "detail" in response_json:
+                    error_detail = response_json["detail"]
+            except Exception:
+                pass
+            
+            logger.error(f"Validation error: {error_detail}")
+            flash(f"Validation error: {error_detail}", "error")
+            return redirect(f"/new-label-eval-dataset/{dataset_id}")
+        
+        if response.status_code != 200:
+            logger.error(f"Failed to create labeled dataset: {response.status_code} - {response.text}")
+            flash(f"Failed to create labeled dataset: {response.status_code}", "error")
+            return redirect(f"/new-label-eval-dataset/{dataset_id}")
+        
+        result = response.json()
+        if result.get("message") != "Success":
+            flash(f"Failed to create labeled dataset: {result.get('message', 'Unknown error')}", "error")
+            return redirect(f"/new-label-eval-dataset/{dataset_id}")
+        elif "labeled_dataset_id" in result:
+            # Redirect to the label-eval-dataset endpoint
+            return redirect(f"/label-eval-dataset/{result['labeled_dataset_id']}")
+        else:
+            flash("Created labeled dataset but no ID was returned", "warning")
+            return redirect("/labeled-eval-datasets")
+    except Exception as e:
+        logger.exception(f"Error creating labeled dataset: {str(e)}")
+        flash(f"Error creating labeled dataset: {str(e)}", "error")
+        return redirect(f"/new-label-eval-dataset/{dataset_id}")
+
+@app.route("/labeled-eval-datasets", methods=["GET"])
+def labeled_eval_datasets():
+    """Page to view all labeled evaluation datasets."""
+    logger.info("Labeled eval datasets endpoint called")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Fetch all labeled datasets
+    try:
+        with api_request("get_user_labeled_datasets", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                result = r.json()
+                if result.get("message") == "Success" and "datasets" in result:
+                    return render_template("labeled_eval_datasets.html", 
+                                          user=user, 
+                                          labeled_datasets=result["datasets"])
+                else:
+                    flash(f"Failed to fetch labeled datasets: {result.get('message', 'Unknown error')}", "error")
+            else:
+                flash(f"Failed to fetch labeled datasets: {r.status_code}", "error")
+    except Exception as e:
+        logger.exception(f"Error fetching labeled datasets: {str(e)}")
+        flash(f"Error fetching labeled datasets: {str(e)}", "error")
+    
+    return render_template("labeled_eval_datasets.html", user=user, labeled_datasets={})
+
+@app.route("/label-eval-dataset/<dataset_id>", methods=["GET"])
+def label_eval_dataset(dataset_id):
+    """Page to label or edit labels for an evaluation dataset."""
+    logger.info(f"Label eval dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Fetch the dataset details
+    try:
+        with api_request(f"get_labeled_dataset/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                result = r.json()
+                if result.get("message") == "Success" and "dataset" in result:
+                    dataset = result["dataset"]
+                    
+                    # Get eval_type from the dataset
+                    eval_type = dataset.get("labeling_type")
+                    if not eval_type:
+                        flash("Dataset does not have a label type specified", "error")
+                        return redirect("/labeled-eval-datasets")
+                    
+                    # Get all available bots to retrieve bot names
+                    bots = {}
+                    try:
+                        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                            if r.status_code == 200:
+                                response_data = r.json()
+                                if response_data.get("message") == "Success" and "data" in response_data:
+                                    bots = response_data["data"]
+                    except Exception:
+                        logger.exception("Failed to fetch bots for labeled dataset view")
+                    
+                    return render_template("label_eval_dataset.html", 
+                                          user=user, 
+                                          dataset=dataset,
+                                          dataset_id=dataset_id,
+                                          eval_type=eval_type,
+                                          bots=bots)
+                else:
+                    flash(f"Failed to fetch labeled dataset: {result.get('message', 'Unknown error')}", "error")
+            else:
+                flash(f"Failed to fetch labeled dataset: {r.status_code}", "error")
+    except Exception as e:
+        logger.exception(f"Error fetching labeled dataset: {str(e)}")
+        flash(f"Error fetching labeled dataset: {str(e)}", "error")
+    
+    return redirect("/labeled-eval-datasets")
+
+@app.route("/update-labeled-session/<dataset_id>", methods=["POST"])
+def update_labeled_session_endpoint(dataset_id):
+    """Update a single labeled session in an evaluation dataset."""
+    logger.info(f"Update labeled session endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return jsonify({"success": False, "message": "Not authenticated"}), 401
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Get the label data from the request
+    try:
+        data = request.get_json()
+        input_idx = data.get("input_idx")
+        session_id = data.get("session_id")
+        bot_id = data.get("bot_id")
+        eval_type = data.get("eval_type")
+        value = data.get("value")
+        notes = data.get("notes")
+        
+        # If session_id is not provided, try to use input_idx for backward compatibility
+        if session_id is None and input_idx is not None:
+            logger.warning("Using input_idx as session_id for backward compatibility")
+            session_id = input_idx
+        
+        # Validate required fields
+        if session_id is None or eval_type is None:
+            return jsonify({"success": False, "message": "Missing required fields"}), 400
+        
+        # For rank type, we need to handle an array of bot IDs
+        if eval_type == "rank":
+            if not isinstance(value, list):
+                return jsonify({"success": False, "message": "Ranking value must be an array of bot IDs"}), 400
+            
+            # Process each bot in the ranking
+            success_count = 0
+            error_count = 0
+            error_messages = []
+            
+            for position, bot_id in enumerate(value):
+                try:
+                    api_data = {
+                        "dataset_id": dataset_id,
+                        "session_id": session_id,
+                        "ranking": position + 1,  # Position is 1-indexed
+                        "notes": notes,
+                        "user": user
+                    }
+                    
+                    with api_request("update_labeled_session", method="POST", data=api_data, id_token=id_token) as r:
+                        if r.status_code == 200 and r.json().get("message") == "Success":
+                            success_count += 1
+                        else:
+                            error_count += 1
+                            error_messages.append(f"Failed to update rank for session {session_id} in dataset {dataset_id}")
+                except Exception as e:
+                    error_count += 1
+                    error_messages.append(f"Error updating rank for session {session_id} in dataset {dataset_id}: {str(e)}")
+            
+            # Return a summary of the results
+            if error_count == 0:
+                return jsonify({
+                    "success": True, 
+                    "message": f"All rankings saved successfully ({success_count} updates)"
+                })
+            else:
+                return jsonify({
+                    "success": True, 
+                    "message": f"Saved {success_count} rankings with {error_count} errors",
+                    "errors": error_messages[:5]  # Return first 5 errors only to avoid huge responses
+                })
+        else:
+            
+            # Prepare data according to new structure
+            api_data = {
+                "user": user,
+                "dataset_id": dataset_id,
+                "session_id": session_id,
+                "notes": notes
+            }
+            
+            # Set the appropriate field based on eval_type
+            if eval_type == "thumbs":
+                api_data["thumbs_up"] = True if value == "up" else False
+            elif eval_type == "score":
+                try:
+                    api_data["score"] = float(value)
+                except (ValueError, TypeError):
+                    return jsonify({"success": False, "message": "Score must be a valid number"}), 400
+            
+            # Call the API to update the labeled session
+            with api_request("update_labeled_session", method="POST", data=api_data, id_token=id_token) as r:
+                if r.status_code == 200:
+                    result = r.json()
+                    if result.get("message") == "Success":
+                        return jsonify({"success": True, "message": "Label updated successfully"})
+                    else:
+                        return jsonify({"success": False, "message": result.get("message", "Unknown error")})
+                else:
+                    return jsonify({"success": False, "message": f"API error: {r.status_code}"}), r.status_code
+    except Exception as e:
+        logger.exception(f"Error updating label: {str(e)}")
+        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500

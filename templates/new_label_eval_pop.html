@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Create Labeled Dataset{% endblock %}
+
+{% block header_title %}Create Labeled Dataset{% endblock %}
+
+{% block styles %}
+<style>
+    .aspect-item {
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        padding: 10px;
+        margin-bottom: 10px;
+        position: relative;
+    }
+    .remove-aspect {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        cursor: pointer;
+        color: #dc3545;
+    }
+    .aspect-type-info {
+        display: none;
+    }
+    .aspect-type-info.active {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Create Labeled Dataset</h2>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Configure your evaluation settings:</p>
+                    
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    
+                    <form id="evalConfigForm" method="POST" action="/create-labeled-dataset/{{ dataset_id }}">
+                        <div class="mb-3">
+                            <label for="dataset_name" class="form-label">Labeled Dataset Name</label>
+                            <input type="text" class="form-control" id="dataset_name" name="dataset_name" required>
+                            <div class="form-text">Give your labeled dataset a descriptive name</div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="form-label">Evaluation Aspects</label>
+                            <div id="aspects-container">
+                                <!-- Aspects will be added here dynamically -->
+                            </div>
+                            
+                            <div class="mt-3">
+                                <button type="button" class="btn btn-outline-primary" id="add-aspect-btn">
+                                    <i class="bi bi-plus-circle"></i> Add Evaluation Aspect
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 d-flex justify-content-between">
+                            <a href="/eval-datasets" class="btn btn-secondary">Back to Datasets</a>
+                            <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Create and Start Evaluation</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Aspect Template Modal -->
+<div class="modal fade" id="aspectModal" tabindex="-1" aria-labelledby="aspectModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="aspectModalLabel">Add Evaluation Aspect</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="aspect-name" class="form-label">Aspect Name</label>
+                    <input type="text" class="form-control" id="aspect-name" placeholder="e.g., Accuracy, Helpfulness, Clarity">
+                </div>
+                <div class="mb-3">
+                    <label for="aspect-description" class="form-label">Description (Optional)</label>
+                    <textarea class="form-control" id="aspect-description" rows="2" placeholder="Describe what this aspect measures"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Evaluation Type</label>
+                    <div class="form-check">
+                        <input class="form-check-input aspect-type-radio" type="radio" name="aspect-type" id="type-thumbs" value="thumbs">
+                        <label class="form-check-label" for="type-thumbs">
+                            Thumbs Up/Down
+                        </label>
+                    </div>
+                    <div class="aspect-type-info" id="info-thumbs">
+                        Simple binary evaluation (👍 or 👎)
+                    </div>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input aspect-type-radio" type="radio" name="aspect-type" id="type-score" value="score">
+                        <label class="form-check-label" for="type-score">
+                            Score (1-10)
+                        </label>
+                    </div>
+                    <div class="aspect-type-info" id="info-score">
+                        Rate on a scale from 1 (worst) to 10 (best)
+                    </div>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input aspect-type-radio" type="radio" name="aspect-type" id="type-rank" value="rank">
+                        <label class="form-check-label" for="type-rank">
+                            Ranking
+                        </label>
+                    </div>
+                    <div class="aspect-type-info" id="info-rank">
+                        Rank all responses from best to worst
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="add-aspect-confirm" disabled>Add Aspect</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const aspectsContainer = document.getElementById('aspects-container');
+        const addAspectBtn = document.getElementById('add-aspect-btn');
+        const aspectModal = new bootstrap.Modal(document.getElementById('aspectModal'));
+        const addAspectConfirm = document.getElementById('add-aspect-confirm');
+        const aspectTypeRadios = document.querySelectorAll('.aspect-type-radio');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        let aspectCounter = 0;
+        
+        // Show info when radio is selected
+        aspectTypeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                // Hide all info divs
+                document.querySelectorAll('.aspect-type-info').forEach(div => {
+                    div.classList.remove('active');
+                });
+                
+                // Show the selected one
+                const infoDiv = document.getElementById(`info-${this.value}`);
+                if (infoDiv) {
+                    infoDiv.classList.add('active');
+                }
+                
+                // Enable the confirm button
+                addAspectConfirm.disabled = false;
+            });
+        });
+        
+        // Open modal when add aspect button is clicked
+        addAspectBtn.addEventListener('click', function() {
+            // Reset modal fields
+            document.getElementById('aspect-name').value = '';
+            document.getElementById('aspect-description').value = '';
+            aspectTypeRadios.forEach(radio => {
+                radio.checked = false;
+            });
+            document.querySelectorAll('.aspect-type-info').forEach(div => {
+                div.classList.remove('active');
+            });
+            addAspectConfirm.disabled = true;
+            
+            aspectModal.show();
+        });
+        
+        // Add aspect when confirmed
+        addAspectConfirm.addEventListener('click', function() {
+            const aspectName = document.getElementById('aspect-name').value.trim();
+            const aspectDescription = document.getElementById('aspect-description').value.trim();
+            let aspectType = '';
+            
+            aspectTypeRadios.forEach(radio => {
+                if (radio.checked) {
+                    aspectType = radio.value;
+                }
+            });
+            
+            if (aspectName && aspectType) {
+                aspectCounter++;
+                
+                // Create aspect item
+                const aspectItem = document.createElement('div');
+                aspectItem.className = 'aspect-item';
+                aspectItem.dataset.id = aspectCounter;
+                
+                // Type label based on selection
+                let typeLabel = '';
+                switch(aspectType) {
+                    case 'thumbs': typeLabel = '<span class="badge bg-primary">Thumbs Up/Down</span>'; break;
+                    case 'score': typeLabel = '<span class="badge bg-success">Score (1-10)</span>'; break;
+                    case 'rank': typeLabel = '<span class="badge bg-info">Ranking</span>'; break;
+                }
+                
+                // Create aspect content
+                aspectItem.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">${aspectName} ${typeLabel}</h5>
+                            ${aspectDescription ? `<p class="mb-1 text-muted small">${aspectDescription}</p>` : ''}
+                        </div>
+                        <button type="button" class="btn-close remove-aspect" aria-label="Remove"></button>
+                    </div>
+                    <input type="hidden" name="aspect_ids[]" value="${aspectCounter}">
+                    <input type="hidden" name="aspect_names[]" value="${aspectName}">
+                    <input type="hidden" name="aspect_descriptions[]" value="${aspectDescription}">
+                    <input type="hidden" name="aspect_types[]" value="${aspectType}">
+                `;
+                
+                // Add to container
+                aspectsContainer.appendChild(aspectItem);
+                
+                // Close modal
+                aspectModal.hide();
+                
+                // Enable submit button if at least one aspect is added
+                submitBtn.disabled = false;
+                
+                // Add event listener for remove button
+                const removeBtn = aspectItem.querySelector('.remove-aspect');
+                removeBtn.addEventListener('click', function() {
+                    aspectItem.remove();
+                    
+                    // Disable submit button if no aspects remain
+                    if (aspectsContainer.children.length === 0) {
+                        submitBtn.disabled = true;
+                    }
+                });
+            }
+        });
+    });
+</script>
+{% endblock %} 

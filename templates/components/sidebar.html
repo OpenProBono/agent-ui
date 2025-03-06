@@ -7,6 +7,7 @@
     <a href="/users" id="users-link">Users</a>
     <a href="/sessions-page" id="sessions-link">My Sessions</a>
     <a href="/eval-datasets" id="evals-link">View My Evals</a>
+    <a href="/labeled-eval-datasets" id="labeled-evals-link">Labeled Evals</a>
     <a href="/create-eval-dataset" id="create-eval-link">Create Eval Dataset</a>
 </div>
 
@@ -34,6 +35,9 @@
             document.getElementById('sessions-link').classList.add('active');
         } else if (currentPath.includes('/create-eval-dataset')) {
             document.getElementById('create-eval-link').classList.add('active');
+        } else if (currentPath.includes('/labeled-eval-datasets') || currentPath.includes('/label-eval-dataset') || 
+                  currentPath.includes('/view-labeled-dataset')) {
+            document.getElementById('labeled-evals-link').classList.add('active');
         } else if (currentPath.includes('/eval-dataset') || currentPath.includes('/eval-datasets')) {
             document.getElementById('evals-link').classList.add('active');
         }

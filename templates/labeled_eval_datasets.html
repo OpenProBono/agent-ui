@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Labeled Evaluation Datasets{% endblock %}
+
+{% block header_title %}Labeled Evaluation Datasets{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Labeled Evaluation Datasets</h1>
+        <div>
+            <a href="/eval-datasets" class="btn btn-outline-primary me-2">View All Datasets</a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% if labeled_datasets %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Inputs</th>
+                        <th>Bots</th>
+                        <th>Labeling Status</th>
+                        <th>Last Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for id, dataset in labeled_datasets.items() %}
+                    <tr>
+                        <td>{{ dataset.name }}</td>
+                        <td>{{ dataset.description or "No description" }}</td>
+                        <td>{{ dataset.inputs|length }}</td>
+                        <td>{{ dataset.bot_ids|length }}</td>
+                        <td>
+                            {% set total_expected = dataset.inputs|length %}
+                            {% set labeled_count = dataset.labels|default({})|length %}
+                            {% set progress_percent = (labeled_count / total_expected * 100) if total_expected > 0 else 0 %}
+                            
+                            <div class="d-flex align-items-center">
+                                <div class="progress flex-grow-1" style="height: 10px;">
+                                    {% set progress_percent = (labeled_count / total_expected * 100) if total_expected > 0 else 0 %}
+                                    <div class="progress-bar {% if progress_percent < 100 %}progress-bar-striped progress-bar-animated{% endif %}" 
+                                         id="main-progress-bar" data-progress="{{ progress_percent|int }}">
+                                        {{ labeled_count }} / {{ total_expected }} ({{ progress_percent|int }}%)
+                                    </div>
+                                </div>
+                                <span class="ms-2 small">{{ progress_percent|int }}%</span>
+                            </div>
+                        </td>
+                        <td>{{ dataset.last_updated|default("N/A") }}</td>
+                        <td>
+                            <a href="/label-eval-dataset/{{ id }}" class="btn btn-sm btn-primary">Continue Labeling</a>
+                            <a href="/view-labeled-dataset/{{ id }}" class="btn btn-sm btn-info">View Results</a>
+                            <button class="btn btn-sm btn-outline-danger delete-dataset-btn" data-dataset-id="{{ id }}" data-dataset-name="{{ dataset.name }}">Delete</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Delete Confirmation Modal -->
+        <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm Deletion</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        Are you sure you want to delete the labeled dataset "<span id="datasetNameToDelete"></span>"?
+                        <p class="text-danger mt-2">This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <a href="#" id="confirmDeleteBtn" class="btn btn-danger">Delete</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            <p>You don't have any labeled evaluation datasets yet.</p>
+            <p>Go to <a href="/eval-datasets">Evaluation Datasets</a> and select a dataset to label.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Handle delete button clicks
+        const deleteButtons = document.querySelectorAll('.delete-dataset-btn');
+        const datasetNameToDelete = document.getElementById('datasetNameToDelete');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const datasetId = this.getAttribute('data-dataset-id');
+                const datasetName = this.getAttribute('data-dataset-name');
+                
+                datasetNameToDelete.textContent = datasetName;
+                confirmDeleteBtn.href = `/delete-labeled-dataset/${datasetId}`;
+                
+                // Show the modal
+                const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+                deleteModal.show();
+            });
+        });
+    });
+</script>
+{% endblock %} 

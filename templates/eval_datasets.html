@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 
-{% block header_title %}Evaluation Datasets{% endblock %}
-
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>Evaluation Datasets</h1>
-        <a href="/create-eval-dataset" class="btn btn-primary">Create New Dataset</a>
+        <div>
+            <a href="/labeled-eval-datasets" class="btn btn-outline-primary me-2">
+                <i class="fas fa-tags"></i> View Labeled Datasets
+            </a>
+            <a href="/create-eval-dataset" class="btn btn-primary">Create New Dataset</a>
+        </div>
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -59,8 +62,13 @@
                         </td>
                         <td>{{ dataset.created_at|default("N/A") }}</td>
                         <td>
-                            <a href="/eval-dataset/{{ id }}" class="btn btn-sm btn-info">View Results</a>
-                            <a href="/clone-eval-dataset/{{ id }}" class="btn btn-sm btn-primary">Clone</a>
+                            <div class="btn-group">
+                                <a href="/eval-dataset/{{ id }}" class="btn btn-sm btn-info">View Results</a>
+                                <button class="btn btn-sm btn-success label-btn" data-dataset-id="{{ id }}" {% if progress_percent < 100 %}disabled title="Evaluation must complete before labeling"{% endif %}>
+                                    <i class="fas fa-tag"></i> New Labeled Dataset
+                                </button>
+                                <a href="/clone-eval-dataset/{{ id }}" class="btn btn-sm btn-primary">Clone</a>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -73,6 +81,53 @@
             <p>Create a new dataset to compare responses from different bots on the same inputs.</p>
         </div>
     {% endif %}
+</div>
+
+<!-- Evaluation Type Selection Modal -->
+<div class="modal fade" id="evalTypeModal" tabindex="-1" aria-labelledby="evalTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="evalTypeModalLabel">Select Evaluation Type</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Please select the type of evaluation you want to perform:</p>
+                <div class="row mt-3">
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Thumbs Up/Down</h5>
+                                <p class="card-text">Simple binary evaluation of responses.</p>
+                                <button class="btn btn-primary select-eval-type" data-eval-type="thumbs">Select</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Score (1-10)</h5>
+                                <p class="card-text">Rate responses on a scale from 1 to 10.</p>
+                                <button class="btn btn-primary select-eval-type" data-eval-type="score">Select</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Ranking</h5>
+                                <p class="card-text">Rank responses from best to worst.</p>
+                                <button class="btn btn-primary select-eval-type" data-eval-type="rank">Select</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -87,6 +142,36 @@
                 location.reload();
             }, 60000); // Refresh every 60 seconds
         }
+        
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+        
+        // Handle evaluation type selection
+        let currentDatasetId = null;
+        const evalTypeModal = new bootstrap.Modal(document.getElementById('evalTypeModal'));
+        
+        // Handle label button click - redirect directly to the new label eval page
+        document.querySelectorAll('.label-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const datasetId = this.dataset.datasetId;
+                window.location.href = `/new-label-eval-dataset/${datasetId}`;
+            });
+        });
+        
+        // The modal code is kept for backward compatibility but is no longer used
+        // Handle evaluation type selection
+        document.querySelectorAll('.select-eval-type').forEach(button => {
+            button.addEventListener('click', function() {
+                const evalType = this.dataset.evalType;
+                if (currentDatasetId) {
+                    window.location.href = `/new-label-eval-dataset/${currentDatasetId}`;
+                }
+                evalTypeModal.hide();
+            });
+        });
     });
 </script>
 {% endblock %} 

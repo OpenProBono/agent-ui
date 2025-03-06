@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Select Evaluation Type{% endblock %}
+
+{% block header_title %}Select Evaluation Type{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Select Evaluation Type</h2>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Please select the type of evaluation you want to perform:</p>
+                    
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }}">{{ message }}</div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    
+                    <div class="row mt-4">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">Thumbs Up/Down</h5>
+                                    <p class="card-text">Simple binary evaluation of responses.</p>
+                                    <a href="/new_label-eval-dataset/{{ dataset_id }}?eval_type=thumbs" class="btn btn-primary">Select</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">Score (1-10)</h5>
+                                    <p class="card-text">Rate responses on a scale from 1 to 10.</p>
+                                    <a href="/new_label-eval-dataset/{{ dataset_id }}?eval_type=score" class="btn btn-primary">Select</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">Ranking</h5>
+                                    <p class="card-text">Rank responses from best to worst.</p>
+                                    <a href="/new_label-eval-dataset/{{ dataset_id }}?eval_type=rank" class="btn btn-primary">Select</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <a href="/eval-datasets" class="btn btn-secondary">Back to Datasets</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,557 @@
+{% extends "base.html" %}
+
+{% block title %}Label Evaluation Dataset: {{ dataset.name }}{% endblock %}
+
+{% block header_title %}Label Evaluation Dataset: {{ dataset.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{{ dataset.name }}</h1>
+        <div>
+            <a href="/labeled-eval-datasets" class="btn btn-secondary">Back to Labeled Datasets</a>
+        </div>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            {% if dataset.description %}
+                <p><strong>Description:</strong> {{ dataset.description }}</p>
+            {% endif %}
+            <p><strong>Inputs:</strong> {{ dataset.inputs|length }}</p>
+            <p><strong>Bots:</strong> {{ dataset.bot_ids|length }}</p>
+            {% if dataset.created_at %}
+                <p><strong>Created:</strong> {{ dataset.created_at }}</p>
+            {% endif %}
+            <p><strong>Evaluation Type:</strong> {{ eval_type|capitalize }}</p>
+            
+            <!-- Labeling Progress indicator -->
+            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length %}
+            {% set labeled_count = 0 %}
+            {% for session in dataset.sessions %}
+                {% if session.labels is defined and session.labels %}
+                    {% set labeled_count = labeled_count + 1 %}
+                {% endif %}
+            {% endfor %}
+            {% set progress_percent = (labeled_count / total_expected * 100) if total_expected > 0 else 0 %}
+            
+            <div class="mt-3">
+                <h5>Labeling Progress:</h5>
+                <div class="progress" style="height: 25px;">
+                    <div class="progress-bar {% if progress_percent < 100 %}progress-bar-striped progress-bar-animated{% endif %}" 
+                         id="main-progress-bar" data-progress="{{ progress_percent|int }}">
+                        {{ labeled_count }} / {{ total_expected }} ({{ progress_percent|int }}%)
+                    </div>
+                </div>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i> Labels are saved automatically as you make selections.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>Label Responses</h2>
+            <div id="save-status" class="alert alert-success" style="display: none; margin-bottom: 0;">
+                <i class="fas fa-check-circle"></i> <span id="save-status-message">Label saved successfully!</span>
+            </div>
+        </div>
+        
+        {% if dataset.sessions and dataset.sessions|length > 0 %}
+            <div class="accordion" id="inputsAccordion">
+                {% for input in dataset.inputs %}
+                    {% set i = loop.index0 %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading{{ i }}">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ i }}" aria-expanded="false" aria-controls="collapse{{ i }}">
+                                <div class="d-flex justify-content-between w-100 me-3">
+                                    <span>Input #{{ i+1 }}: {{ input[:100] }}{% if input|length > 100 %}...{% endif %}</span>
+                                    {% set has_labels = false %}
+                                    {% for session in dataset.sessions %}
+                                        {% if session.input_idx == i and session.labels is defined and session.labels %}
+                                            {% set has_labels = true %}
+                                        {% endif %}
+                                    {% endfor %}
+                                    <span class="badge {% if has_labels %}bg-success{% else %}bg-secondary{% endif %} label-status" id="label-status-{{ i }}">
+                                        {% if has_labels %}Labeled{% else %}Not labeled{% endif %}
+                                    </span>
+                                </div>
+                            </button>
+                        </h2>
+                        <div id="collapse{{ i }}" class="accordion-collapse collapse" aria-labelledby="heading{{ i }}" data-bs-parent="#inputsAccordion">
+                            <div class="accordion-body">
+                                <div class="mb-3">
+                                    <h5>Input:</h5>
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <pre class="mb-0">{{ input }}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {% if eval_type == 'rank' %}
+                                <!-- Ranking Mode UI -->
+                                <div class="ranking-mode">
+                                    <h5>Rank Responses (drag to reorder):</h5>
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle"></i> Drag and drop the responses to rank them from best (top) to worst (bottom).
+                                    </div>
+                                    <div class="ranking-container" id="ranking-container-{{ i }}" data-input-idx="{{ i }}" data-session-id="{{ dataset.sessions[0].id if dataset.sessions|length > 0 else '' }}">
+                                        {% for bot_id in dataset.bot_ids %}
+                                            {% for session in dataset.sessions %}
+                                                {% if session.bot_id == bot_id and session.input_idx == i %}
+                                                    {% set bot_name = "Unknown Bot" %}
+                                                    {% if bot_id in bots %}
+                                                        {% set bot_name = bots[bot_id].name %}
+                                                    {% elif session.bot_name is defined %}
+                                                        {% set bot_name = session.bot_name %}
+                                                    {% endif %}
+                                                    <div class="card mb-3 ranking-item" data-bot-id="{{ bot_id }}" data-input-idx="{{ i }}" data-session-id="{{ session.id }}">
+                                                        <div class="card-header d-flex justify-content-between align-items-center">
+                                                            <span><i class="fas fa-grip-lines me-2"></i> <strong>{{ bot_name }}</strong> ({{ bot_id }})</span>
+                                                            <span class="badge bg-secondary rank-position">Not ranked</span>
+                                                        </div>
+                                                        <div class="card-body">
+                                                            <div class="response-content">
+                                                                {{ session.output_text|safe }}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </div>
+                                    <button class="btn btn-primary save-ranking-btn mt-3" data-input-idx="{{ i }}">Save Ranking</button>
+                                </div>
+                                
+                                <!-- Add notes field for ranking -->
+                                <div class="mt-2">
+                                    <textarea id="notes-{{ i }}" class="form-control" placeholder="Add notes about this ranking (optional)" rows="2"></textarea>
+                                </div>
+                                {% else %}
+                                <!-- Individual Response Cards for Thumbs and Score modes -->
+                                <div class="individual-responses">
+                                    <h5>Responses:</h5>
+                                    <div class="row">
+                                        {% for bot_id in dataset.bot_ids %}
+                                            {% for session in dataset.sessions %}
+                                                {% if session.bot_id == bot_id and session.input_idx == i %}
+                                                    <div class="col-md-6 mb-3">
+                                                        <div class="card h-100">
+                                                            <div class="card-header">
+                                                                {% set bot_name = "Unknown Bot" %}
+                                                                {% if bot_id in bots %}
+                                                                    {% set bot_name = bots[bot_id].name %}
+                                                                {% elif session.bot_name is defined %}
+                                                                    {% set bot_name = session.bot_name %}
+                                                                {% endif %}
+                                                                <strong>{{ bot_name }}</strong> ({{ bot_id }})
+                                                            </div>
+                                                            <div class="card-body">
+                                                                <div class="response-content mb-3">
+                                                                    {{ session.output_text|safe }}
+                                                                </div>
+                                                                
+                                                                {% if eval_type == 'thumbs' %}
+                                                                <!-- Thumbs Up/Down UI -->
+                                                                <div class="thumbs-container" data-input-idx="{{ i }}" data-bot-id="{{ bot_id }}" data-session-id="{{ session.id }}">
+                                                                    <button class="btn btn-outline-success thumbs-btn" data-value="up">
+                                                                        <i class="fas fa-thumbs-up"></i>
+                                                                    </button>
+                                                                    <button class="btn btn-outline-danger thumbs-btn" data-value="down">
+                                                                        <i class="fas fa-thumbs-down"></i>
+                                                                    </button>
+                                                                </div>
+                                                                <!-- Add notes field -->
+                                                                <div class="mt-2">
+                                                                    <textarea id="notes-{{ i }}-{{ bot_id }}" class="form-control" placeholder="Add notes (optional)" rows="2"></textarea>
+                                                                </div>
+                                                                {% elif eval_type == 'score' %}
+                                                                <!-- Score UI -->
+                                                                <div class="score-container" data-input-idx="{{ i }}" data-bot-id="{{ bot_id }}" data-session-id="{{ session.id }}">
+                                                                    <input type="range" class="form-range score-slider" min="1" max="10" step="1" value="5">
+                                                                    <span class="badge bg-primary score-value">5</span>
+                                                                </div>
+                                                                <!-- Add notes field -->
+                                                                <div class="mt-2">
+                                                                    <textarea id="notes-{{ i }}-{{ bot_id }}" class="form-control" placeholder="Add notes (optional)" rows="2"></textarea>
+                                                                </div>
+                                                                {% endif %}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i> No responses available to label. Please make sure the evaluation has completed.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Store dataset sessions in a hidden element to avoid Jinja2/JS conflicts -->
+<div id="dataset-sessions-data" style="display: none;" data-sessions="{{ dataset.sessions|tojson|safe }}"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize Sortable for ranking
+        document.querySelectorAll('.ranking-container').forEach(container => {
+            new Sortable(container, {
+                animation: 150,
+                ghostClass: 'bg-light',
+                onEnd: function() {
+                    updateRankPositions(container);
+                    // Auto-save when ranking changes
+                    const inputIdx = container.dataset.inputIdx;
+                    saveRanking(inputIdx);
+                }
+            });
+        });
+        
+        // Handle thumbs up/down buttons
+        document.querySelectorAll('.thumbs-container .thumbs-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const container = this.closest('.thumbs-container');
+                const inputIdx = container.dataset.inputIdx;
+                const botId = container.dataset.botId;
+                const value = this.dataset.value;
+                
+                // Reset both buttons to outline style
+                container.querySelector('.thumbs-btn[data-value="up"]').classList.remove('btn-success');
+                container.querySelector('.thumbs-btn[data-value="up"]').classList.add('btn-outline-success');
+                container.querySelector('.thumbs-btn[data-value="down"]').classList.remove('btn-danger');
+                container.querySelector('.thumbs-btn[data-value="down"]').classList.add('btn-outline-danger');
+                
+                // Highlight the selected button
+                if (value === 'up') {
+                    this.classList.remove('btn-outline-success');
+                    this.classList.add('btn-success');
+                } else {
+                    this.classList.remove('btn-outline-danger');
+                    this.classList.add('btn-danger');
+                }
+                
+                // Get notes for this evaluation
+                const notes = document.getElementById(`notes-${inputIdx}-${botId}`).value;
+                
+                // Get session_id from container
+                const sessionId = container.dataset.sessionId;
+                
+                // Send to server
+                updateLabelOnServer(inputIdx, botId, 'thumbs', value, notes, sessionId);
+            });
+        });
+        
+        // Handle score slider
+        document.querySelectorAll('.score-container .score-slider').forEach(slider => {
+            slider.addEventListener('input', function() {
+                const container = this.closest('.score-container');
+                const inputIdx = container.dataset.inputIdx;
+                const botId = container.dataset.botId;
+                const value = this.value;
+                
+                // Update the score badge
+                const badge = container.querySelector('.score-value');
+                badge.textContent = value;
+                
+                // Get notes for this evaluation
+                const notes = document.getElementById(`notes-${inputIdx}-${botId}`).value;
+                
+                // Get session_id from container
+                const sessionId = container.dataset.sessionId;
+                
+                // Send to server
+                updateLabelOnServer(inputIdx, botId, 'score', value, notes, sessionId);
+            });
+        });
+        
+        // Handle notes changes for auto-save
+        document.querySelectorAll('textarea[id^="notes-"]').forEach(textarea => {
+            textarea.addEventListener('blur', function() {
+                const id = this.id;
+                let inputIdx, botId, sessionId;
+                
+                // Parse the ID to get input index and bot ID
+                if (id.split('-').length === 2) {
+                    // This is a ranking notes field
+                    inputIdx = id.split('-')[1];
+                    const container = document.getElementById(`ranking-container-${inputIdx}`);
+                    sessionId = container.dataset.sessionId;
+                    
+                    // Get the current ranking
+                    const items = container.querySelectorAll('.ranking-item');
+                    const botIds = Array.from(items).map(item => item.dataset.botId);
+                    
+                    // Send to server
+                    updateLabelOnServer(inputIdx, null, 'rank', botIds, this.value, sessionId);
+                } else if (id.split('-').length === 3) {
+                    // This is a thumbs/score notes field
+                    inputIdx = id.split('-')[1];
+                    botId = id.split('-')[2];
+                    
+                    // Find the container
+                    const thumbsContainer = document.querySelector(`.thumbs-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    const scoreContainer = document.querySelector(`.score-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    
+                    if (thumbsContainer) {
+                        // This is a thumbs evaluation
+                        sessionId = thumbsContainer.dataset.sessionId;
+                        
+                        // Find the selected thumbs value
+                        const upBtn = thumbsContainer.querySelector('.thumbs-btn[data-value="up"]');
+                        const downBtn = thumbsContainer.querySelector('.thumbs-btn[data-value="down"]');
+                        let value = null;
+                        
+                        if (upBtn.classList.contains('btn-success')) {
+                            value = 'up';
+                        } else if (downBtn.classList.contains('btn-danger')) {
+                            value = 'down';
+                        }
+                        
+                        if (value) {
+                            updateLabelOnServer(inputIdx, botId, 'thumbs', value, this.value, sessionId);
+                        }
+                    } else if (scoreContainer) {
+                        // This is a score evaluation
+                        sessionId = scoreContainer.dataset.sessionId;
+                        const value = scoreContainer.querySelector('.score-slider').value;
+                        
+                        updateLabelOnServer(inputIdx, botId, 'score', value, this.value, sessionId);
+                    }
+                }
+            });
+        });
+        
+        // Function to save ranking
+        function saveRanking(inputIdx) {
+            const container = document.getElementById(`ranking-container-${inputIdx}`);
+            const items = container.querySelectorAll('.ranking-item');
+            const botIds = Array.from(items).map(item => item.dataset.botId);
+            
+            // Get notes for this ranking
+            const notes = document.getElementById(`notes-${inputIdx}`).value;
+            
+            // Get session_id from container
+            const sessionId = container.dataset.sessionId;
+            
+            // Send to server
+            updateLabelOnServer(inputIdx, null, 'rank', botIds, notes, sessionId);
+        }
+        
+        // Function to update rank positions
+        function updateRankPositions(container) {
+            const items = container.querySelectorAll('.ranking-item');
+            items.forEach((item, index) => {
+                const badge = item.querySelector('.rank-position');
+                badge.textContent = index + 1;
+            });
+        }
+        
+        // Handle save ranking button clicks
+        document.querySelectorAll('.save-ranking-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const inputIdx = this.dataset.inputIdx;
+                saveRanking(inputIdx);
+            });
+        });
+        
+        // Function to update a label on the server
+        function updateLabelOnServer(inputIdx, botId, evalType, value, notes, sessionId) {
+            const datasetId = window.location.pathname.split('/').pop();
+            
+            // Show saving indicator
+            const saveStatus = document.getElementById('save-status');
+            const saveStatusMessage = document.getElementById('save-status-message');
+            saveStatusMessage.textContent = 'Saving...';
+            saveStatus.style.display = 'block';
+            
+            // Send to server
+            fetch(`/update-labeled-session/${datasetId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    input_idx: inputIdx,
+                    bot_id: botId,
+                    eval_type: evalType,
+                    value: value,
+                    notes: notes,
+                    session_id: sessionId
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the status badge for this input
+                    const statusBadge = document.getElementById(`label-status-${inputIdx}`);
+                    statusBadge.textContent = 'Labeled';
+                    statusBadge.classList.remove('bg-secondary');
+                    statusBadge.classList.add('bg-success');
+                    
+                    // Show success message
+                    saveStatusMessage.textContent = 'Label saved successfully!';
+                    saveStatus.classList.remove('alert-danger');
+                    saveStatus.classList.add('alert-success');
+                    setTimeout(() => {
+                        saveStatus.style.display = 'none';
+                    }, 3000);
+                } else {
+                    // Show error message
+                    saveStatusMessage.textContent = 'Error saving label: ' + data.message;
+                    saveStatus.classList.remove('alert-success');
+                    saveStatus.classList.add('alert-danger');
+                    setTimeout(() => {
+                        saveStatus.style.display = 'none';
+                    }, 5000);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving label:', error);
+                // Show error message
+                saveStatusMessage.textContent = 'Error saving label. Please try again.';
+                saveStatus.classList.remove('alert-success');
+                saveStatus.classList.add('alert-danger');
+                setTimeout(() => {
+                    saveStatus.style.display = 'none';
+                }, 5000);
+            });
+        }
+        
+        // Apply existing labels from the dataset to the UI
+        function applyExistingLabels() {
+            // Get sessions data from the hidden element
+            const sessionsDataElement = document.getElementById('dataset-sessions-data');
+            const sessionsData = JSON.parse(sessionsDataElement.dataset.sessions);
+            
+            if (!sessionsData || sessionsData.length === 0) return;
+            
+            // Process each session to find and apply labels
+            sessionsData.forEach(session => {
+                if (!session.labels) return;
+                
+                const inputIdx = session.input_idx;
+                const botId = session.bot_id;
+                const sessionId = session.id;
+                
+                // Update status badges for labeled inputs
+                const statusBadge = document.getElementById(`label-status-${inputIdx}`);
+                if (statusBadge) {
+                    statusBadge.textContent = 'Labeled';
+                    statusBadge.classList.remove('bg-secondary');
+                    statusBadge.classList.add('bg-success');
+                }
+                
+                // Apply thumbs labels
+                if (session.labels.thumbs) {
+                    const container = document.querySelector(`.thumbs-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    if (container) {
+                        const btn = container.querySelector(`.thumbs-btn[data-value="${session.labels.thumbs}"]`);
+                        if (btn) {
+                            if (session.labels.thumbs === 'up') {
+                                btn.classList.remove('btn-outline-success');
+                                btn.classList.add('btn-success');
+                            } else {
+                                btn.classList.remove('btn-outline-danger');
+                                btn.classList.add('btn-danger');
+                            }
+                        }
+                    }
+                }
+                
+                // Apply score labels
+                if (session.labels.score) {
+                    const container = document.querySelector(`.score-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    if (container) {
+                        const slider = container.querySelector('.score-slider');
+                        const badge = container.querySelector('.score-value');
+                        if (slider && badge) {
+                            slider.value = session.labels.score;
+                            badge.textContent = session.labels.score;
+                        }
+                    }
+                }
+            });
+            
+            // Apply ranking labels
+            // Group sessions by input index to find rankings
+            const inputRankings = {};
+            
+            sessionsData.forEach(session => {
+                if (!session.labels || !session.labels.rank) return;
+                
+                const inputIdx = session.input_idx;
+                const botId = session.bot_id;
+                const rank = session.labels.rank;
+                
+                if (!inputRankings[inputIdx]) {
+                    inputRankings[inputIdx] = [];
+                }
+                
+                inputRankings[inputIdx].push({
+                    botId: botId,
+                    rank: rank
+                });
+            });
+            
+            // Apply rankings to UI
+            for (const inputIdx in inputRankings) {
+                const container = document.getElementById(`ranking-container-${inputIdx}`);
+                if (container) {
+                    // Sort by rank
+                    inputRankings[inputIdx].sort((a, b) => a.rank - b.rank);
+                    
+                    // Reorder items
+                    const fragment = document.createDocumentFragment();
+                    inputRankings[inputIdx].forEach(item => {
+                        const element = container.querySelector(`.ranking-item[data-bot-id="${item.botId}"]`);
+                        if (element) {
+                            fragment.appendChild(element);
+                        }
+                    });
+                    
+                    // Append any items not in the ranking
+                    container.querySelectorAll('.ranking-item').forEach(item => {
+                        if (!inputRankings[inputIdx].some(r => r.botId === item.dataset.botId)) {
+                            fragment.appendChild(item);
+                        }
+                    });
+                    
+                    // Replace container contents with reordered items
+                    container.innerHTML = '';
+                    container.appendChild(fragment);
+                    
+                    // Update rank positions
+                    updateRankPositions(container);
+                }
+            }
+        }
+        
+        // Apply existing labels when the page loads
+        applyExistingLabels();
+    });
+</script>
+{% endblock %} 
