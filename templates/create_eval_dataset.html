@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Create Evaluation Dataset{% endblock %}
+{% block title %}{{ "Create Evaluation Dataset" }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <h1>Create Evaluation Dataset</h1>
+    <h1>{{ "Run Evaluation Dataset" }}</h1>
     
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -23,18 +23,18 @@
             <form method="POST" action="/create-eval-dataset">
                 <div class="mb-3">
                     <label for="name" class="form-label">Dataset Name*</label>
-                    <input type="text" class="form-control" id="name" name="name" required>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ dataset.name ~ ' (Clone)' if dataset else '' }}" required>
                 </div>
                 
                 <div class="mb-3">
                     <label for="description" class="form-label">Description</label>
-                    <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                    <textarea class="form-control" id="description" name="description" rows="2">{{ dataset.description if dataset else '' }}</textarea>
                     <div class="form-text">Optional: Provide a description for this evaluation dataset</div>
                 </div>
                 
                 <div class="mb-3">
                     <label for="inputs" class="form-label">Inputs*</label>
-                    <textarea class="form-control" id="inputs" name="inputs" rows="8" required></textarea>
+                    <textarea class="form-control" id="inputs" name="inputs" rows="8" required>{{ '\n'.join(dataset.inputs) if dataset and dataset.inputs else '' }}</textarea>
                     <div class="form-text">Enter one input per line. Each input will be sent to all selected bots.</div>
                     <div class="form-text text-warning"><i class="fas fa-exclamation-triangle"></i> Processing time increases with the number of inputs and bots.</div>
                 </div>
@@ -48,7 +48,8 @@
                                     {% for bot_id, bot in bots.items() %}
                                     <div class="col-md-6 mb-2">
                                         <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" name="bot_ids" value="{{ bot_id }}" id="bot-{{ bot_id }}">
+                                            <input class="form-check-input" type="checkbox" name="bot_ids" value="{{ bot_id }}" id="bot-{{ bot_id }}" 
+                                                {{ 'checked' if dataset and bot_id in dataset.bot_ids else '' }}>
                                             <label class="form-check-label" for="bot-{{ bot_id }}">
                                                 {{ bot.name }} ({{ bot_id }})
                                             </label>
@@ -72,6 +73,18 @@
                             
                             <div id="manual_bots_container" class="mt-2">
                                 <!-- Manually added bots will appear here -->
+                                {% if dataset and dataset.bot_ids %}
+                                    {% for bot_id in dataset.bot_ids %}
+                                        {% if bot_id not in bots %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="bot_ids" value="{{ bot_id }}" id="bot-manual-{{ bot_id }}" checked>
+                                            <label class="form-check-label" for="bot-manual-{{ bot_id }}">
+                                                {{ bot_id }} (manually added)
+                                            </label>
+                                        </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -79,7 +92,7 @@
                 
                 <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                     <a href="/eval-datasets" class="btn btn-secondary me-md-2">Cancel</a>
-                    <button type="submit" class="btn btn-primary" id="submit-btn">Create Dataset</button>
+                    <button type="submit" class="btn btn-primary" id="submit-btn">{{ "Clone" if dataset else "Create" }} Dataset</button>
                 </div>
             </form>
         </div>

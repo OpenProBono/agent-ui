@@ -1,7 +1,5 @@
 {% extends "base.html" %}
 
-{% block title %}Evaluation Datasets{% endblock %}
-
 {% block header_title %}Evaluation Datasets{% endblock %}
 
 {% block content %}
@@ -62,6 +60,7 @@
                         <td>{{ dataset.created_at|default("N/A") }}</td>
                         <td>
                             <a href="/eval-dataset/{{ id }}" class="btn btn-sm btn-info">View Results</a>
+                            <a href="/clone-eval-dataset/{{ id }}" class="btn btn-sm btn-primary">Clone</a>
                         </td>
                     </tr>
                     {% endfor %}

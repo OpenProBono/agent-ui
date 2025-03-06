@@ -1056,9 +1056,6 @@ def view_eval_dataset(dataset_id):
                             session_info["bot_name"] = bots[bot_id].get("name", "Unknown Bot")
                         else:
                             session_info["bot_name"] = f"Bot ID: {bot_id}"
-                    logger.info(dataset["dataset"]["bot_ids"])
-                    logger.info(dataset["dataset"]["sessions"])
-                    logger.info("ada")
                     return render_template("view_eval_dataset.html", 
                                           user=user, 
                                           dataset=dataset["dataset"], 
@@ -1072,3 +1069,53 @@ def view_eval_dataset(dataset_id):
         flash(f"Error fetching evaluation dataset: {str(e)}", "error")
     
     return redirect("/eval-datasets")
+
+@app.route("/clone-eval-dataset/<dataset_id>", methods=["GET"])
+def clone_eval_dataset(dataset_id):
+    """Clone an existing evaluation dataset."""
+    logger.info("Cloning evaluation dataset: %s", dataset_id)
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    logger.info("Fetching dataset info for ID %s", dataset_id)
+    try:
+        with api_request(f"get_dataset_sessions/{dataset_id}", method="GET", id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Fetch dataset info failed.")
+        return jsonify({"error": "Failed to load dataset."}), 400
+    
+    logger.debug("Fetched dataset info: %s", result)
+    if not result.get("dataset"):
+        logger.error("Fetch dataset info received an unexpected response.")
+        abort(404)
+    
+    dataset_data = result["dataset"]
+    
+    # Create a dataset object with the necessary fields
+    dataset = {
+        "name": dataset_data.get("name", ""),
+        "description": dataset_data.get("description", ""),
+        "inputs": dataset_data.get("inputs", []),
+        "bot_ids": dataset_data.get("bot_ids", [])
+    }
+    
+    # Get all available bots for selection
+    bots = {}
+    try:
+        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "data" in response_data:
+                    bots = response_data["data"]
+                    logger.info(f"Fetched {len(bots)} bots for eval dataset creation")
+    except Exception:
+        logger.exception("Failed to fetch bots for eval dataset creation")
+    
+    return render_template("create_eval_dataset.html", user=user, bots=bots, dataset=dataset)
