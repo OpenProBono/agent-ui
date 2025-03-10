@@ -79,13 +79,13 @@ def logout():
 @app.route("/agents")
 def agents():
     logger.info("Agents endpoint called.")
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     # Initialize agents list
     agents = []
-    
+
     # If user is authenticated, fetch real agent data
     if id_token:
         try:
@@ -99,13 +99,13 @@ def agents():
                             search_tools = bot.get("search_tools", [])
                             vdb_tools = bot.get("vdb_tools", [])
                             total_tools = len(search_tools) + len(vdb_tools)
-                            
+
                             # Count resources (assuming vdb_tools represent resources)
                             resources = len(vdb_tools)
-                            
+
                             # Determine if bot is dynamic (has search tools)
                             is_dynamic = len(search_tools) > 0
-                            
+
                             agent = {
                                 "id": bot_id,
                                 "name": bot.get("name", "Untitled Bot"),
@@ -117,9 +117,9 @@ def agents():
                             agents.append(agent)
                 else:
                     logger.error(f"Failed to fetch agents: {r.status_code} - {r.text}")
-        except Exception as e:
-            logger.error(f"Error fetching agents: {str(e)}")
-    
+        except Exception:
+            logger.exception("Error fetching agents.")
+
     # If no agents were fetched (either due to error or user not authenticated),
     # provide example data for display purposes
     if not agents:
@@ -129,7 +129,7 @@ def agents():
             {"id": 2, "name": "default_anthropic", "created_on": datetime.date.today(), "tools": 1, "resources": 4, "dynamic": False},
             {"id": 3, "name": "manual_sources_case_search", "created_on": datetime.date.today(), "tools": 4, "resources": 150, "dynamic": True},
         ]
-    
+
     return render_template("agents.html", agents=agents, user=user)
 
 
@@ -157,7 +157,7 @@ def resources():
 @app.route("/agent/<agent>/", methods=["GET"])
 @app.route("/agent/<agent>/session/<session_id>", methods=["GET"])
 def chatbot(agent, session_id=None):
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     data = {"bot_id": agent, "user": user}
     logger.info("Fetching agent info for ID %s", agent)
     id_token = session.get("id_token")
@@ -224,7 +224,7 @@ def users():
 def chat():
     logger.info("Chat endpoint called.")
     id_token = session.get("id_token")
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     if not id_token:
         return redirect("/signup")
 
@@ -290,7 +290,7 @@ def chat():
 def new_session(agent):
     logger.info("Starting new session for agent ID %s", agent)
     id_token = session.get("id_token")
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     if not id_token:
         return redirect("/signup")
     try:
@@ -337,7 +337,7 @@ def get_sessions():
 
         for session_id in request.args.getlist("ids[]"):
             logger.info("Fetching session info for session ID %s", session_id)
-            user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+            user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
             data = {"session_id": session_id, "user": user}
             with api_request("fetch_session", id_token=id_token, data=data) as r:
                 r.raise_for_status()
@@ -359,14 +359,14 @@ def get_sessions():
 def sessions_page():
     """Page to view all the user's previous chat sessions with filtering capability."""
     logger.info("Sessions page endpoint called.")
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-    
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
-    
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
     # Get all available bots for filtering options
     bots = {}
     try:
@@ -377,7 +377,7 @@ def sessions_page():
                     bots = response_data["data"]
     except Exception:
         logger.exception("Failed to fetch bots for sessions page.")
-    
+
     # Fetch all sessions for this user
     sessions = []
     try:
@@ -389,7 +389,7 @@ def sessions_page():
                     logger.info(f"Fetched {len(sessions)} sessions for user")
     except Exception:
         logger.exception("Failed to fetch sessions for user")
-    
+
     return render_template("sessions.html", user=user, bots=bots, sessions=sessions)
 
 
@@ -401,7 +401,7 @@ def get_session_messages(session_id):
         return redirect("/signup")
 
     try:
-        user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+        user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
         data = {"session_id": session_id, "user": user}
         with api_request("fetch_session_formatted_history", id_token=id_token, data=data) as r:
             r.raise_for_status()
@@ -442,7 +442,7 @@ def feedback():
     feedback_data = loads(request.form.get("data"))
     feedback_index = request.form.get("index")
     session_id = request.form.get("sessionId")
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     data = {
         "feedback_text": feedback_data["comment"],
         "session_id": session_id,
@@ -471,17 +471,15 @@ def feedback():
 def search(collection):
     start = time.time()
     id_token = session.get("id_token")
-    if not id_token:
+    email = session.get("email")
+    uid = session.get("firebase_uid")
+    if not (id_token and email and uid):
         return redirect("/signup")
+    user = {"email": email, "firebase_uid": uid}
     if not collection:
         abort(404)
     semantic = request.args.get("semantic")
     if not semantic:
-        email = session.get("email")
-        user = {
-            "email": email,
-            "firebase_uid": session.get("firebase_uid")
-        }
         return render_template("search.html", collection=collection, jurisdictions=JURISDICTIONS, user=user)
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist("jurisdictions")
@@ -519,11 +517,6 @@ def search(collection):
     ]
     end = time.time()
     elapsed = str(round(end - start, 5))
-    email = session.get("email")
-    user = {
-        "email": email,
-        "firebase_uid": session.get("firebase_uid")
-    }
     return render_template(
         "search.html",
         collection=collection,
@@ -584,7 +577,7 @@ def manage(collection):
     ]
     end = time.time()
     elapsed = str(round(end - start, 5))
-    
+
     return render_template(
         "manage_collection.html",
         collection=collection,
@@ -643,7 +636,7 @@ def create_agent():
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     if request.method == "GET":
         return render_template("create_agent.html", user=user)
     # Retrieve core fields
@@ -784,18 +777,18 @@ def clone_agent(agent):
 @app.route("/delete-agent/<agent_id>", methods=["GET"])
 def delete_agent(agent_id):
     logger.info("Delete agent endpoint called for agent ID: %s", agent_id)
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         logger.warning("User not authenticated, redirecting to signup")
         return redirect("/signup")
-    
+
     try:
         # Call the delete_bot/{bot_id} endpoint
         endpoint = f"delete_bot/{agent_id}"
         logger.info("Calling API endpoint: %s", endpoint)
-        
+
         with api_request(endpoint, method="DELETE", id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
@@ -803,8 +796,8 @@ def delete_agent(agent_id):
                     logger.info("Successfully deleted agent with ID: %s. Response: %s", agent_id, response_data)
                     flash("Agent successfully deleted", "success")
                 else:
-                    error_msg = f"Failed to delete agent: {response_data["message"]}"
-                    logger.info(error_msg)
+                    error_msg = f"Failed to delete agent: {response_data['message']}"
+                    logger.error(error_msg)
                     flash(error_msg, "error")
             else:
                 error_msg = f"Failed to delete agent: {r.status_code}"
@@ -813,13 +806,13 @@ def delete_agent(agent_id):
                     if "message" in error_data:
                         error_msg = error_data["message"]
                 except Exception:
-                    pass
+                    logger.exception("Failed to delete agent.")
                 logger.error("Failed to delete agent: %s - %s", r.status_code, r.text)
                 flash(error_msg, "error")
     except Exception as e:
-        logger.exception("Error deleting agent: %s", str(e))
-        flash(f"Error deleting agent: {str(e)}", "error")
-    
+        logger.exception("Exception while deleting agent.")
+        flash(f"Error deleting agent: {e!s}", "error")
+
     # Redirect back to the agents page
     return redirect("/agents")
 
@@ -828,27 +821,27 @@ def delete_agent(agent_id):
 def export_sessions():
     """Export multiple sessions with their full data including messages."""
     logger.info("Export sessions endpoint called.")
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return jsonify({"error": "Authentication required"}), 401
-    
+
     # Get user info
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
-    
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
     # Get session IDs from request
     try:
         request_data = request.get_json()
         if not request_data or not isinstance(request_data, dict) or "session_ids" not in request_data:
             return jsonify({"error": "Missing session_ids parameter"}), 400
-        
+
         session_ids = request_data["session_ids"]
         if not isinstance(session_ids, list) or not session_ids:
             return jsonify({"error": "session_ids must be a non-empty list"}), 400
-        
+
         logger.info(f"Exporting {len(session_ids)} sessions")
-        
+
         # Get all available bots to retrieve bot names
         bots = {}
         try:
@@ -859,7 +852,7 @@ def export_sessions():
                         bots = response_data["data"]
         except Exception:
             logger.exception("Failed to fetch bots for export sessions.")
-        
+
         # Fetch data for each session
         exported_sessions = []
         for session_id in session_ids:
@@ -872,11 +865,11 @@ def export_sessions():
                     else:
                         logger.warning(f"Failed to fetch session {session_id}: {r.status_code}")
                         continue
-                
+
                 # Get session messages using internal request to our own endpoint
                 messages_url = f"{request.host_url.rstrip('/')}/get_session_messages/{session_id}"
                 headers = {"Cookie": f"session={request.cookies.get('session', '')}"}
-                
+
                 try:
                     messages_response = requests.get(messages_url, headers=headers, timeout=10)
                     if messages_response.status_code == 200:
@@ -886,16 +879,16 @@ def export_sessions():
                     else:
                         logger.warning(f"Failed to fetch messages for session {session_id}: {messages_response.status_code}")
                         session_metadata["messages"] = []
-                except Exception as msg_err:
-                    logger.exception(f"Error fetching messages for session {session_id}: {str(msg_err)}")
+                except Exception:
+                    logger.exception("Error fetching messages for session %s.", session_id)
                     session_metadata["messages"] = []
-                
+
                 # Get bot name if available
                 bot_id = session_metadata.get("bot_id", "")
                 bot_name = "Unknown Agent"
                 if bot_id and bot_id in bots:
                     bot_name = bots[bot_id].get("name", "Unknown Agent")
-                
+
                 # Add to exported sessions
                 exported_sessions.append({
                     "session_id": session_id,
@@ -905,36 +898,36 @@ def export_sessions():
                     "timestamp": session_metadata.get("timestamp", ""),
                     "messages": session_metadata.get("messages", [])
                 })
-                
-            except Exception as e:
-                logger.exception(f"Error exporting session {session_id}: {str(e)}")
+
+            except Exception:
+                logger.exception("Error exporting session %s", session_id)
                 # Continue with other sessions even if one fails
-        
+
         if not exported_sessions:
             return jsonify({"error": "Failed to export any sessions"}), 500
-        
+
         return jsonify({
             "message": "Success",
             "count": len(exported_sessions),
             "sessions": exported_sessions
         })
-        
-    except Exception as e:
-        logger.exception(f"Export sessions endpoint error: {str(e)}")
+
+    except Exception:
+        logger.exception("Export sessions endpoint error.")
         return jsonify({"error": "Failed to export sessions"}), 500
 
 @app.route("/eval-datasets", methods=["GET"])
 def eval_datasets():
     """Page to view all evaluation datasets."""
     logger.info("Eval datasets endpoint called.")
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-    
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
-    
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
     # Fetch all evaluation datasets for this user
     datasets = []
     try:
@@ -945,8 +938,8 @@ def eval_datasets():
                     datasets = response_data["datasets"]
                     logger.info(f"Fetched {len(datasets)} evaluation datasets for user")
     except Exception:
-        logger.exception("Failed to fetch evaluation datasets for user")
-    
+        logger.exception("Failed to fetch evaluation datasets for user.")
+
     return render_template("eval_datasets.html", user=user, datasets=datasets)
 
 
@@ -954,14 +947,14 @@ def eval_datasets():
 def create_eval_dataset():
     """Page to create a new evaluation dataset."""
     logger.info("Create eval dataset endpoint called.")
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-    
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
-    
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
     if request.method == "GET":
         # Get all available bots for selection
         bots = {}
@@ -971,12 +964,12 @@ def create_eval_dataset():
                     response_data = r.json()
                     if response_data.get("message") == "Success" and "data" in response_data:
                         bots = response_data["data"]
-                        logger.info(f"Fetched {len(bots)} bots for eval dataset creation")
+                        logger.info("Fetched %s bots for eval dataset creation", len(bots))
         except Exception:
-            logger.exception("Failed to fetch bots for eval dataset creation")
-        
+            logger.exception("Failed to fetch bots for eval dataset creation.")
+
         return render_template("create_eval_dataset.html", user=user, bots=bots)
-    
+
     # Handle POST request to create a new dataset
     try:
         # Get form data
@@ -984,15 +977,15 @@ def create_eval_dataset():
         description = request.form.get("description", "")
         inputs_text = request.form.get("inputs", "")
         bot_ids = request.form.getlist("bot_ids")
-        
+
         # Process inputs (split by newlines and remove empty lines)
         inputs = [line.strip() for line in inputs_text.split("\n") if line.strip()]
-        
+
         # Validate required fields
         if not name or not inputs or not bot_ids:
             flash("Please provide a name, at least one input, and select at least one bot.", "error")
             return redirect("/create-eval-dataset")
-        
+
         # Create dataset object
         dataset_data = {
             "name": name,
@@ -1001,22 +994,22 @@ def create_eval_dataset():
             "bot_ids": bot_ids,
             "user": user
         }
-        
+
         # Call API to create the dataset and run evaluations
         with api_request("run_eval_dataset", method="POST", data=dataset_data, id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
-            
+
             if result.get("message") == "Success" and "dataset_id" in result:
                 flash(f"Evaluation dataset '{name}' created successfully! Evaluations are running in the background.", "success")
                 return redirect(f"/eval-dataset/{result['dataset_id']}")
             else:
                 flash(f"Failed to create evaluation dataset: {result.get('message', 'Unknown error')}", "error")
                 return redirect("/create-eval-dataset")
-                
+
     except Exception as e:
-        logger.exception(f"Error creating evaluation dataset: {str(e)}")
-        flash(f"Error creating evaluation dataset: {str(e)}", "error")
+        logger.exception("Error creating evaluation dataset.")
+        flash(f"Error creating evaluation dataset: {e!s}", "error")
         return redirect("/create-eval-dataset")
 
 
@@ -1024,14 +1017,14 @@ def create_eval_dataset():
 def view_eval_dataset(dataset_id):
     """Page to view a specific evaluation dataset and compare outputs."""
     logger.info(f"View eval dataset endpoint called for dataset ID: {dataset_id}")
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-    
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
-    
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
     # Fetch the dataset details
     try:
         with api_request(f"get_dataset_sessions/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
@@ -1048,7 +1041,7 @@ def view_eval_dataset(dataset_id):
                                     bots = response_data["data"]
                     except Exception:
                         logger.exception("Failed to fetch bots for eval dataset view")
-                    
+
                     # Add bot names to the dataset
                     for session_id, session_info in dataset["dataset"]["sessions"].items():
                         bot_id = session_info.get("bot_id", "")
@@ -1056,32 +1049,32 @@ def view_eval_dataset(dataset_id):
                             session_info["bot_name"] = bots[bot_id].get("name", "Unknown Bot")
                         else:
                             session_info["bot_name"] = f"Bot ID: {bot_id}"
-                    return render_template("view_eval_dataset.html", 
-                                          user=user, 
-                                          dataset=dataset["dataset"], 
+                    return render_template("view_eval_dataset.html",
+                                          user=user,
+                                          dataset=dataset["dataset"],
                                           bots=bots)
                 else:
                     flash(f"Failed to fetch evaluation dataset: {dataset.get('message', 'Unknown error')}", "error")
             else:
                 flash(f"Failed to fetch evaluation dataset: {r.status_code}", "error")
     except Exception as e:
-        logger.exception(f"Error fetching evaluation dataset: {str(e)}")
-        flash(f"Error fetching evaluation dataset: {str(e)}", "error")
-    
+        logger.exception("Error fetching evaluation dataset.")
+        flash(f"Error fetching evaluation dataset: {e!s}", "error")
+
     return redirect("/eval-datasets")
 
 @app.route("/clone-eval-dataset/<dataset_id>", methods=["GET"])
 def clone_eval_dataset(dataset_id):
     """Clone an existing evaluation dataset."""
     logger.info("Cloning evaluation dataset: %s", dataset_id)
-    
+
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-    
-    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
-    
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
     logger.info("Fetching dataset info for ID %s", dataset_id)
     try:
         with api_request(f"get_dataset_sessions/{dataset_id}", method="GET", id_token=id_token) as r:
@@ -1090,14 +1083,14 @@ def clone_eval_dataset(dataset_id):
     except Exception:
         logger.exception("Fetch dataset info failed.")
         return jsonify({"error": "Failed to load dataset."}), 400
-    
+
     logger.debug("Fetched dataset info: %s", result)
     if not result.get("dataset"):
         logger.error("Fetch dataset info received an unexpected response.")
         abort(404)
-    
+
     dataset_data = result["dataset"]
-    
+
     # Create a dataset object with the necessary fields
     dataset = {
         "name": dataset_data.get("name", ""),
@@ -1105,7 +1098,7 @@ def clone_eval_dataset(dataset_id):
         "inputs": dataset_data.get("inputs", []),
         "bot_ids": dataset_data.get("bot_ids", [])
     }
-    
+
     # Get all available bots for selection
     bots = {}
     try:
@@ -1117,5 +1110,5 @@ def clone_eval_dataset(dataset_id):
                     logger.info(f"Fetched {len(bots)} bots for eval dataset creation")
     except Exception:
         logger.exception("Failed to fetch bots for eval dataset creation")
-    
+
     return render_template("create_eval_dataset.html", user=user, bots=bots, dataset=dataset)
