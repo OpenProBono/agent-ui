@@ -1301,36 +1301,35 @@ def label_eval_dataset(dataset_id):
                 if result.get("message") == "Success" and "dataset" in result:
                     dataset = result["dataset"]
                     
-                    # Get eval_type from the dataset
-                    eval_type = dataset.get("labeling_type")
-                    if not eval_type:
-                        flash("Dataset does not have a label type specified", "error")
-                        return redirect("/labeled-eval-datasets")
-                    
-                    # Get all available bots to retrieve bot names
+                    # Fetch bot details for each bot in the dataset
                     bots = {}
-                    try:
-                        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
-                            if r.status_code == 200:
-                                response_data = r.json()
-                                if response_data.get("message") == "Success" and "data" in response_data:
-                                    bots = response_data["data"]
-                    except Exception:
-                        logger.exception("Failed to fetch bots for labeled dataset view")
+                    for bot_id in dataset.get("bot_ids", []):
+                        try:
+                            with api_request(f"get_bot/{bot_id}", method="GET", data={"user": user}, id_token=id_token) as bot_r:
+                                if bot_r.status_code == 200:
+                                    bot_result = bot_r.json()
+                                    if bot_result.get("message") == "Success" and "bot" in bot_result:
+                                        bots[bot_id] = bot_result["bot"]
+                        except Exception as e:
+                            logger.warning(f"Error fetching bot {bot_id}: {str(e)}")
+                    
+                    # Check if labeling_aspects exists
+                    if "labeling_aspects" not in dataset or not dataset["labeling_aspects"]:
+                        flash("This dataset does not have any labeling aspects defined", "error")
+                        return redirect("/labeled-eval-datasets")
                     
                     return render_template("label_eval_dataset.html", 
                                           user=user, 
                                           dataset=dataset,
                                           dataset_id=dataset_id,
-                                          eval_type=eval_type,
                                           bots=bots)
                 else:
-                    flash(f"Failed to fetch labeled dataset: {result.get('message', 'Unknown error')}", "error")
+                    flash(f"Failed to fetch dataset: {result.get('message', 'Unknown error')}", "error")
             else:
-                flash(f"Failed to fetch labeled dataset: {r.status_code}", "error")
+                flash(f"Failed to fetch dataset: {r.status_code}", "error")
     except Exception as e:
-        logger.exception(f"Error fetching labeled dataset: {str(e)}")
-        flash(f"Error fetching labeled dataset: {str(e)}", "error")
+        logger.exception(f"Error fetching dataset: {str(e)}")
+        flash(f"Error fetching dataset: {str(e)}", "error")
     
     return redirect("/labeled-eval-datasets")
 
@@ -1355,14 +1354,10 @@ def update_labeled_session_endpoint(dataset_id):
         eval_type = data.get("eval_type")
         value = data.get("value")
         notes = data.get("notes")
-        
-        # If session_id is not provided, try to use input_idx for backward compatibility
-        if session_id is None and input_idx is not None:
-            logger.warning("Using input_idx as session_id for backward compatibility")
-            session_id = input_idx
+        aspect_id = data.get("aspect_id")
         
         # Validate required fields
-        if session_id is None or eval_type is None:
+        if session_id is None or eval_type is None or aspect_id is None:
             return jsonify({"success": False, "message": "Missing required fields"}), 400
         
         # For rank type, we need to handle an array of bot IDs
@@ -1378,11 +1373,12 @@ def update_labeled_session_endpoint(dataset_id):
             for position, bot_id in enumerate(value):
                 try:
                     api_data = {
+                        "user": user,
                         "dataset_id": dataset_id,
                         "session_id": session_id,
+                        "aspect_id": aspect_id,
                         "ranking": position + 1,  # Position is 1-indexed
-                        "notes": notes,
-                        "user": user
+                        "notes": notes
                     }
                     
                     with api_request("update_labeled_session", method="POST", data=api_data, id_token=id_token) as r:
@@ -1414,6 +1410,7 @@ def update_labeled_session_endpoint(dataset_id):
                 "user": user,
                 "dataset_id": dataset_id,
                 "session_id": session_id,
+                "aspect_id": aspect_id,
                 "notes": notes
             }
             
@@ -1439,3 +1436,40 @@ def update_labeled_session_endpoint(dataset_id):
     except Exception as e:
         logger.exception(f"Error updating label: {str(e)}")
         return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
+
+@app.route("/input_generator", methods=["POST"])
+def input_generator():
+    """Generate inputs using AI based on a prompt."""
+    logger.info("Input generator endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return jsonify({"message": "Not authenticated"}), 401
+    
+    user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
+    
+    try:
+        # Get the prompt from the request
+        data = request.get_json()
+        if not data or 'prompt' not in data:
+            return jsonify({"message": "Missing prompt parameter"}), 400
+        
+        prompt = data['prompt']
+        
+        # Call the FastAPI input_generator endpoint
+        with api_request("input_generator", method="POST", data={"prompt": prompt, "user": user}, id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+            
+            if result.get("message") == "Success" and "inputs" in result:
+                return jsonify({
+                    "message": "Success",
+                    "inputs": result["inputs"]
+                })
+            else:
+                return jsonify({"message": result.get("message", "Failed to generate inputs")}), 400
+                
+    except Exception as e:
+        logger.exception(f"Error generating inputs: {str(e)}")
+        return jsonify({"message": f"Error: {str(e)}"}), 500

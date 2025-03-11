@@ -33,10 +33,26 @@
                 </div>
                 
                 <div class="mb-3">
-                    <label for="inputs" class="form-label">Inputs*</label>
-                    <textarea class="form-control" id="inputs" name="inputs" rows="8" required>{{ '\n'.join(dataset.inputs) if dataset and dataset.inputs else '' }}</textarea>
-                    <div class="form-text">Enter one input per line. Each input will be sent to all selected bots.</div>
-                    <div class="form-text text-warning"><i class="fas fa-exclamation-triangle"></i> Processing time increases with the number of inputs and bots.</div>
+                    <label for="prompt" class="form-label">Input Generator Prompt*</label>
+                    <div class="d-flex flex-column">
+                        <textarea class="form-control mb-2" id="prompt" name="prompt" rows="4" placeholder="e.g. Generate legal questions about contract law. Make them diverse and cover different aspects like formation, breach, remedies, etc." required></textarea>
+                        <button type="button" class="btn btn-primary align-self-end" id="generate-btn">Generate Inputs</button>
+                    </div>
+                    <div class="form-text">Enter a detailed prompt to generate evaluation inputs using AI. Be specific about the type and variety of inputs you want.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="inputs" class="form-label">Generated Inputs*</label>
+                    <div class="card">
+                        <div class="card-body">
+                            <div id="inputs-container">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> Enter a prompt above and click "Generate Inputs" to create evaluation inputs.
+                                </div>
+                            </div>
+                            <textarea class="form-control d-none" id="inputs" name="inputs" rows="8" required></textarea>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="mb-3">
@@ -101,6 +117,78 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Handle input generation
+        const generateBtn = document.getElementById('generate-btn');
+        const promptInput = document.getElementById('prompt');
+        const inputsContainer = document.getElementById('inputs-container');
+        const inputsTextarea = document.getElementById('inputs');
+        
+        generateBtn.addEventListener('click', async function() {
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                alert('Please enter a prompt first.');
+                return;
+            }
+            
+            // Show loading state
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+            inputsContainer.innerHTML = '<div class="alert alert-info"><i class="fas fa-spinner fa-spin"></i> Generating inputs...</div>';
+            
+            try {
+                const response = await fetch('/input_generator', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+                
+                const data = await response.json();
+                
+                if (data.message === 'Success' && data.inputs) {
+                    // Display generated inputs
+                    const inputsList = document.createElement('ul');
+                    inputsList.className = 'list-group';
+                    data.inputs.forEach((input, index) => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = `${index + 1}. ${input}`;
+                        inputsList.appendChild(li);
+                    });
+                    inputsContainer.innerHTML = '';
+                    inputsContainer.appendChild(inputsList);
+                    
+                    // Update hidden textarea with inputs
+                    inputsTextarea.value = data.inputs.join('\n');
+                } else {
+                    throw new Error(data.message || 'Failed to generate inputs');
+                }
+            } catch (error) {
+                inputsContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                        <button type="button" class="btn btn-outline-danger btn-sm float-end" onclick="retryGeneration()">Retry</button>
+                    </div>
+                `;
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = 'Generate Inputs';
+            }
+        });
+        
+        // Allow pressing Enter to generate inputs
+        promptInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                generateBtn.click();
+            }
+        });
+        
+        window.retryGeneration = function() {
+            generateBtn.click();
+        };
+        
         // Handle manually adding bot IDs
         const addBotBtn = document.getElementById('add_bot_btn');
         const manualBotIdInput = document.getElementById('manual_bot_id');

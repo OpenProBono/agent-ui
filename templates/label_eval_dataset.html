@@ -31,14 +31,14 @@
             {% if dataset.created_at %}
                 <p><strong>Created:</strong> {{ dataset.created_at }}</p>
             {% endif %}
-            <p><strong>Evaluation Type:</strong> {{ eval_type|capitalize }}</p>
+            <p><strong>Evaluation Aspects:</strong> {{ dataset.labeling_aspects|length }}</p>
             
             <!-- Labeling Progress indicator -->
-            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length %}
+            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length * dataset.labeling_aspects|length %}
             {% set labeled_count = 0 %}
             {% for session in dataset.sessions %}
                 {% if session.labels is defined and session.labels %}
-                    {% set labeled_count = labeled_count + 1 %}
+                    {% set labeled_count = labeled_count + session.labels|length %}
                 {% endif %}
             {% endfor %}
             {% set progress_percent = (labeled_count / total_expected * 100) if total_expected > 0 else 0 %}
@@ -99,47 +99,7 @@
                                     </div>
                                 </div>
                                 
-                                {% if eval_type == 'rank' %}
-                                <!-- Ranking Mode UI -->
-                                <div class="ranking-mode">
-                                    <h5>Rank Responses (drag to reorder):</h5>
-                                    <div class="alert alert-info">
-                                        <i class="fas fa-info-circle"></i> Drag and drop the responses to rank them from best (top) to worst (bottom).
-                                    </div>
-                                    <div class="ranking-container" id="ranking-container-{{ i }}" data-input-idx="{{ i }}" data-session-id="{{ dataset.sessions[0].id if dataset.sessions|length > 0 else '' }}">
-                                        {% for bot_id in dataset.bot_ids %}
-                                            {% for session in dataset.sessions %}
-                                                {% if session.bot_id == bot_id and session.input_idx == i %}
-                                                    {% set bot_name = "Unknown Bot" %}
-                                                    {% if bot_id in bots %}
-                                                        {% set bot_name = bots[bot_id].name %}
-                                                    {% elif session.bot_name is defined %}
-                                                        {% set bot_name = session.bot_name %}
-                                                    {% endif %}
-                                                    <div class="card mb-3 ranking-item" data-bot-id="{{ bot_id }}" data-input-idx="{{ i }}" data-session-id="{{ session.id }}">
-                                                        <div class="card-header d-flex justify-content-between align-items-center">
-                                                            <span><i class="fas fa-grip-lines me-2"></i> <strong>{{ bot_name }}</strong> ({{ bot_id }})</span>
-                                                            <span class="badge bg-secondary rank-position">Not ranked</span>
-                                                        </div>
-                                                        <div class="card-body">
-                                                            <div class="response-content">
-                                                                {{ session.output_text|safe }}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                {% endif %}
-                                            {% endfor %}
-                                        {% endfor %}
-                                    </div>
-                                    <button class="btn btn-primary save-ranking-btn mt-3" data-input-idx="{{ i }}">Save Ranking</button>
-                                </div>
-                                
-                                <!-- Add notes field for ranking -->
-                                <div class="mt-2">
-                                    <textarea id="notes-{{ i }}" class="form-control" placeholder="Add notes about this ranking (optional)" rows="2"></textarea>
-                                </div>
-                                {% else %}
-                                <!-- Individual Response Cards for Thumbs and Score modes -->
+                                <!-- Individual Response Cards for all evaluation types -->
                                 <div class="individual-responses">
                                     <h5>Responses:</h5>
                                     <div class="row">
@@ -162,40 +122,108 @@
                                                                     {{ session.output_text|safe }}
                                                                 </div>
                                                                 
-                                                                {% if eval_type == 'thumbs' %}
-                                                                <!-- Thumbs Up/Down UI -->
-                                                                <div class="thumbs-container" data-input-idx="{{ i }}" data-bot-id="{{ bot_id }}" data-session-id="{{ session.id }}">
-                                                                    <button class="btn btn-outline-success thumbs-btn" data-value="up">
-                                                                        <i class="fas fa-thumbs-up"></i>
-                                                                    </button>
-                                                                    <button class="btn btn-outline-danger thumbs-btn" data-value="down">
-                                                                        <i class="fas fa-thumbs-down"></i>
-                                                                    </button>
+                                                                <!-- Evaluation aspects -->
+                                                                <div class="evaluation-aspects">
+                                                                    {% for aspect in dataset.labeling_aspects %}
+                                                                        <div class="aspect-container mb-3">
+                                                                            <h6 class="aspect-name">{{ aspect.name }}</h6>
+                                                                            {% if aspect.description %}
+                                                                                <p class="text-muted small">{{ aspect.description }}</p>
+                                                                            {% endif %}
+                                                                            
+                                                                            {% if aspect.type == 'thumbs' %}
+                                                                                <!-- Thumbs Up/Down UI -->
+                                                                                            <div class="thumbs-container" 
+                                                                                                data-input-idx="{{ i }}" 
+                                                                                                data-bot-id="{{ bot_id }}" 
+                                                                                                data-session-id="{{ session.id }}"
+                                                                                                data-aspect-id="{{ aspect.aspect_id }}">
+                                                                                    <button class="btn btn-outline-success thumbs-btn" data-value="up">
+                                                                                        <i class="fas fa-thumbs-up"></i>
+                                                                                    </button>
+                                                                                    <button class="btn btn-outline-danger thumbs-btn" data-value="down">
+                                                                                        <i class="fas fa-thumbs-down"></i>
+                                                                                    </button>
+                                                                                </div>
+                                                                            {% elif aspect.type == 'score' %}
+                                                                                <!-- Score UI -->
+                                                                                            <div class="score-container" 
+                                                                                                data-input-idx="{{ i }}" 
+                                                                                                data-bot-id="{{ bot_id }}" 
+                                                                                                data-session-id="{{ session.id }}"
+                                                                                                data-aspect-id="{{ aspect.aspect_id }}">
+                                                                                    <input type="range" class="form-range score-slider" min="1" max="10" step="1" value="5">
+                                                                                    <span class="badge bg-primary score-value">5</span>
+                                                                                </div>
+                                                                            {% endif %}
+                                                                            
+                                                                            <!-- Add notes field -->
+                                                                            <div class="mt-2">
+                                                                                            <textarea id="notes-{{ i }}-{{ bot_id }}-{{ aspect.aspect_id }}" class="form-control" placeholder="Add notes (optional)" rows="2"></textarea>
+                                                                                        </div>
+                                                                                    </div>
+                                                                    {% endfor %}
+                                                                    
+                                                                    {% for aspect in dataset.labeling_aspects %}
+                                                                        {% if aspect.type == 'rank' %}
+                                                                        <!-- Ranking UI for this aspect -->
+                                                                        <div class="aspect-container mb-3">
+                                                                            <h6 class="aspect-name">{{ aspect.name }}</h6>
+                                                                            {% if aspect.description %}
+                                                                                <p class="text-muted small">{{ aspect.description }}</p>
+                                                                            {% endif %}
+                                                                            
+                                                                            <div class="alert alert-info">
+                                                                                <i class="fas fa-info-circle"></i> Drag and drop the responses to rank them from best (top) to worst (bottom).
+                                                                            </div>
+                                                                            <div class="ranking-container" 
+                                                                                 id="ranking-container-{{ i }}-{{ aspect.aspect_id }}" 
+                                                                                 data-input-idx="{{ i }}" 
+                                                                                 data-session-id="{{ session.id }}"
+                                                                                 data-aspect-id="{{ aspect.aspect_id }}">
+                                                                                {% for rank_bot_id in dataset.bot_ids %}
+                                                                                    {% for rank_session in dataset.sessions %}
+                                                                                        {% if rank_session.bot_id == rank_bot_id and rank_session.input_idx == i %}
+                                                                                            {% set rank_bot_name = "Unknown Bot" %}
+                                                                                            {% if rank_bot_id in bots %}
+                                                                                                {% set rank_bot_name = bots[rank_bot_id].name %}
+                                                                                            {% elif rank_session.bot_name is defined %}
+                                                                                                {% set rank_bot_name = rank_session.bot_name %}
+                                                                                            {% endif %}
+                                                                                            <div class="card mb-3 ranking-item" 
+                                                                                                 data-bot-id="{{ rank_bot_id }}" 
+                                                                                                 data-input-idx="{{ i }}" 
+                                                                                                 data-session-id="{{ rank_session.id }}">
+                                                                                                <div class="card-header d-flex justify-content-between align-items-center">
+                                                                                                    <span><i class="fas fa-grip-lines me-2"></i> <strong>{{ rank_bot_name }}</strong> ({{ rank_bot_id }})</span>
+                                                                                                    <span class="badge bg-secondary rank-position">Not ranked</span>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        {% endif %}
+                                                                                    {% endfor %}
+                                                                                {% endfor %}
+                                                                            </div>
+                                                                            <button class="btn btn-primary save-ranking-btn mt-3" 
+                                                                                    data-input-idx="{{ i }}"
+                                                                                    data-aspect-id="{{ aspect.aspect_id }}">Save Ranking</button>
+                                                                            
+                                                                            <!-- Add notes field for ranking -->
+                                                                            <div class="mt-2">
+                                                                                <textarea id="notes-{{ i }}-{{ aspect.aspect_id }}" class="form-control" placeholder="Add notes about this ranking (optional)" rows="2"></textarea>
+                                                                            </div>
+                                                                        </div>
+                                                                        {% endif %}
+                                                                    {% endfor %}
                                                                 </div>
-                                                                <!-- Add notes field -->
-                                                                <div class="mt-2">
-                                                                    <textarea id="notes-{{ i }}-{{ bot_id }}" class="form-control" placeholder="Add notes (optional)" rows="2"></textarea>
-                                                                </div>
-                                                                {% elif eval_type == 'score' %}
-                                                                <!-- Score UI -->
-                                                                <div class="score-container" data-input-idx="{{ i }}" data-bot-id="{{ bot_id }}" data-session-id="{{ session.id }}">
-                                                                    <input type="range" class="form-range score-slider" min="1" max="10" step="1" value="5">
-                                                                    <span class="badge bg-primary score-value">5</span>
-                                                                </div>
-                                                                <!-- Add notes field -->
-                                                                <div class="mt-2">
-                                                                    <textarea id="notes-{{ i }}-{{ bot_id }}" class="form-control" placeholder="Add notes (optional)" rows="2"></textarea>
-                                                                </div>
-                                                                {% endif %}
                                                             </div>
                                                         </div>
                                                     </div>
                                                 {% endif %}
                                             {% endfor %}
                                         {% endfor %}
+                                        </div>
                                     </div>
                                 </div>
-                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -203,7 +231,7 @@
             </div>
         {% else %}
             <div class="alert alert-warning">
-                <i class="fas fa-exclamation-triangle"></i> No responses available to label. Please make sure the evaluation has completed.
+                <i class="fas fa-exclamation-triangle"></i>  No responses available to label. Please make sure the evaluation has completed.
             </div>
         {% endif %}
     </div>
@@ -217,33 +245,25 @@
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize Sortable for ranking
-        document.querySelectorAll('.ranking-container').forEach(container => {
-            new Sortable(container, {
-                animation: 150,
-                ghostClass: 'bg-light',
-                onEnd: function() {
-                    updateRankPositions(container);
-                    // Auto-save when ranking changes
-                    const inputIdx = container.dataset.inputIdx;
-                    saveRanking(inputIdx);
-                }
-            });
-        });
-        
-        // Handle thumbs up/down buttons
+        // Handle thumbs buttons
         document.querySelectorAll('.thumbs-container .thumbs-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const container = this.closest('.thumbs-container');
                 const inputIdx = container.dataset.inputIdx;
                 const botId = container.dataset.botId;
+                const aspectId = container.dataset.aspectId;
                 const value = this.dataset.value;
                 
-                // Reset both buttons to outline style
-                container.querySelector('.thumbs-btn[data-value="up"]').classList.remove('btn-success');
-                container.querySelector('.thumbs-btn[data-value="up"]').classList.add('btn-outline-success');
-                container.querySelector('.thumbs-btn[data-value="down"]').classList.remove('btn-danger');
-                container.querySelector('.thumbs-btn[data-value="down"]').classList.add('btn-outline-danger');
+                // Reset both buttons
+                container.querySelectorAll('.thumbs-btn').forEach(b => {
+                    if (b.dataset.value === 'up') {
+                        b.classList.remove('btn-success');
+                        b.classList.add('btn-outline-success');
+                    } else {
+                        b.classList.remove('btn-danger');
+                        b.classList.add('btn-outline-danger');
+                    }
+                });
                 
                 // Highlight the selected button
                 if (value === 'up') {
@@ -255,13 +275,13 @@
                 }
                 
                 // Get notes for this evaluation
-                const notes = document.getElementById(`notes-${inputIdx}-${botId}`).value;
+                const notes = document.getElementById(`notes-${inputIdx}-${botId}-${aspectId}`).value;
                 
                 // Get session_id from container
                 const sessionId = container.dataset.sessionId;
                 
                 // Send to server
-                updateLabelOnServer(inputIdx, botId, 'thumbs', value, notes, sessionId);
+                updateLabelOnServer(inputIdx, botId, 'thumbs', value, notes, sessionId, aspectId);
             });
         });
         
@@ -271,6 +291,7 @@
                 const container = this.closest('.score-container');
                 const inputIdx = container.dataset.inputIdx;
                 const botId = container.dataset.botId;
+                const aspectId = container.dataset.aspectId;
                 const value = this.value;
                 
                 // Update the score badge
@@ -278,13 +299,13 @@
                 badge.textContent = value;
                 
                 // Get notes for this evaluation
-                const notes = document.getElementById(`notes-${inputIdx}-${botId}`).value;
+                const notes = document.getElementById(`notes-${inputIdx}-${botId}-${aspectId}`).value;
                 
                 // Get session_id from container
                 const sessionId = container.dataset.sessionId;
                 
                 // Send to server
-                updateLabelOnServer(inputIdx, botId, 'score', value, notes, sessionId);
+                updateLabelOnServer(inputIdx, botId, 'score', value, notes, sessionId, aspectId);
             });
         });
         
@@ -292,13 +313,15 @@
         document.querySelectorAll('textarea[id^="notes-"]').forEach(textarea => {
             textarea.addEventListener('blur', function() {
                 const id = this.id;
-                let inputIdx, botId, sessionId;
+                let inputIdx, botId, aspectId, sessionId;
+                const idParts = id.split('-');
                 
-                // Parse the ID to get input index and bot ID
-                if (id.split('-').length === 2) {
+                // Parse the ID to get input index, bot ID, and aspect ID
+                if (idParts.length === 3) {
                     // This is a ranking notes field
-                    inputIdx = id.split('-')[1];
-                    const container = document.getElementById(`ranking-container-${inputIdx}`);
+                    inputIdx = idParts[1];
+                    aspectId = idParts[2];
+                    const container = document.getElementById(`ranking-container-${inputIdx}-${aspectId}`);
                     sessionId = container.dataset.sessionId;
                     
                     // Get the current ranking
@@ -306,15 +329,16 @@
                     const botIds = Array.from(items).map(item => item.dataset.botId);
                     
                     // Send to server
-                    updateLabelOnServer(inputIdx, null, 'rank', botIds, this.value, sessionId);
-                } else if (id.split('-').length === 3) {
+                    updateLabelOnServer(inputIdx, null, 'rank', botIds, this.value, sessionId, aspectId);
+                } else if (idParts.length === 4) {
                     // This is a thumbs/score notes field
-                    inputIdx = id.split('-')[1];
-                    botId = id.split('-')[2];
+                    inputIdx = idParts[1];
+                    botId = idParts[2];
+                    aspectId = idParts[3];
                     
                     // Find the container
-                    const thumbsContainer = document.querySelector(`.thumbs-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
-                    const scoreContainer = document.querySelector(`.score-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    const thumbsContainer = document.querySelector(`.thumbs-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"][data-aspect-id="${aspectId}"]`);
+                    const scoreContainer = document.querySelector(`.score-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"][data-aspect-id="${aspectId}"]`);
                     
                     if (thumbsContainer) {
                         // This is a thumbs evaluation
@@ -332,54 +356,68 @@
                         }
                         
                         if (value) {
-                            updateLabelOnServer(inputIdx, botId, 'thumbs', value, this.value, sessionId);
+                            updateLabelOnServer(inputIdx, botId, 'thumbs', value, this.value, sessionId, aspectId);
                         }
                     } else if (scoreContainer) {
                         // This is a score evaluation
                         sessionId = scoreContainer.dataset.sessionId;
                         const value = scoreContainer.querySelector('.score-slider').value;
                         
-                        updateLabelOnServer(inputIdx, botId, 'score', value, this.value, sessionId);
+                        updateLabelOnServer(inputIdx, botId, 'score', value, this.value, sessionId, aspectId);
                     }
                 }
             });
         });
         
         // Function to save ranking
-        function saveRanking(inputIdx) {
-            const container = document.getElementById(`ranking-container-${inputIdx}`);
+        function saveRanking(inputIdx, aspectId) {
+            const container = document.getElementById(`ranking-container-${inputIdx}-${aspectId}`);
+            const sessionId = container.dataset.sessionId;
+            
+            // Get the current ranking
             const items = container.querySelectorAll('.ranking-item');
             const botIds = Array.from(items).map(item => item.dataset.botId);
             
-            // Get notes for this ranking
-            const notes = document.getElementById(`notes-${inputIdx}`).value;
-            
-            // Get session_id from container
-            const sessionId = container.dataset.sessionId;
+            // Get notes
+            const notes = document.getElementById(`notes-${inputIdx}-${aspectId}`).value;
             
             // Send to server
-            updateLabelOnServer(inputIdx, null, 'rank', botIds, notes, sessionId);
+            updateLabelOnServer(inputIdx, null, 'rank', botIds, notes, sessionId, aspectId);
         }
         
-        // Function to update rank positions
+        // Handle save ranking button
+        document.querySelectorAll('.save-ranking-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const inputIdx = this.dataset.inputIdx;
+                const aspectId = this.dataset.aspectId;
+                saveRanking(inputIdx, aspectId);
+            });
+        });
+        
+        // Make ranking containers sortable
+        document.querySelectorAll('.ranking-container').forEach(container => {
+            new Sortable(container, {
+                animation: 150,
+                ghostClass: 'ranking-item-ghost',
+                onEnd: function() {
+                    updateRankPositions(container);
+                }
+            });
+        });
+        
+        // Update rank positions in UI
         function updateRankPositions(container) {
             const items = container.querySelectorAll('.ranking-item');
             items.forEach((item, index) => {
                 const badge = item.querySelector('.rank-position');
-                badge.textContent = index + 1;
+                badge.textContent = `Rank ${index + 1}`;
+                badge.classList.remove('bg-secondary');
+                badge.classList.add('bg-primary');
             });
         }
         
-        // Handle save ranking button clicks
-        document.querySelectorAll('.save-ranking-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const inputIdx = this.dataset.inputIdx;
-                saveRanking(inputIdx);
-            });
-        });
-        
-        // Function to update a label on the server
-        function updateLabelOnServer(inputIdx, botId, evalType, value, notes, sessionId) {
+        // Function to update label on server
+        function updateLabelOnServer(inputIdx, botId, evalType, value, notes, sessionId, aspectId) {
             const datasetId = window.location.pathname.split('/').pop();
             
             // Show saving indicator
@@ -400,7 +438,8 @@
                     eval_type: evalType,
                     value: value,
                     notes: notes,
-                    session_id: sessionId
+                    session_id: sessionId,
+                    aspect_id: aspectId
                 }),
             })
             .then(response => response.json())
@@ -465,13 +504,17 @@
                     statusBadge.classList.add('bg-success');
                 }
                 
+                // Process each aspect in the labels
+                for (const aspectId in session.labels) {
+                    const label = session.labels[aspectId];
+                
                 // Apply thumbs labels
-                if (session.labels.thumbs) {
-                    const container = document.querySelector(`.thumbs-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    if (label.thumbs) {
+                        const container = document.querySelector(`.thumbs-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"][data-aspect-id="${aspectId}"]`);
                     if (container) {
-                        const btn = container.querySelector(`.thumbs-btn[data-value="${session.labels.thumbs}"]`);
+                            const btn = container.querySelector(`.thumbs-btn[data-value="${label.thumbs}"]`);
                         if (btn) {
-                            if (session.labels.thumbs === 'up') {
+                                if (label.thumbs === 'up') {
                                 btn.classList.remove('btn-outline-success');
                                 btn.classList.add('btn-success');
                             } else {
@@ -483,50 +526,72 @@
                 }
                 
                 // Apply score labels
-                if (session.labels.score) {
-                    const container = document.querySelector(`.score-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"]`);
+                    if (label.score) {
+                        const container = document.querySelector(`.score-container[data-input-idx="${inputIdx}"][data-bot-id="${botId}"][data-aspect-id="${aspectId}"]`);
                     if (container) {
                         const slider = container.querySelector('.score-slider');
                         const badge = container.querySelector('.score-value');
                         if (slider && badge) {
-                            slider.value = session.labels.score;
-                            badge.textContent = session.labels.score;
+                                slider.value = label.score;
+                                badge.textContent = label.score;
+                            }
+                        }
+                    }
+                    
+                    // Apply notes
+                    if (label.notes) {
+                        // For thumbs and score
+                        const notesField = document.getElementById(`notes-${inputIdx}-${botId}-${aspectId}`);
+                        if (notesField) {
+                            notesField.value = label.notes;
+                        }
+                        
+                        // For ranking
+                        const rankNotesField = document.getElementById(`notes-${inputIdx}-${aspectId}`);
+                        if (rankNotesField) {
+                            rankNotesField.value = label.notes;
                         }
                     }
                 }
             });
             
             // Apply ranking labels
-            // Group sessions by input index to find rankings
+            // Group sessions by input index and aspect ID to find rankings
             const inputRankings = {};
             
             sessionsData.forEach(session => {
-                if (!session.labels || !session.labels.rank) return;
+                if (!session.labels) return;
                 
                 const inputIdx = session.input_idx;
                 const botId = session.bot_id;
-                const rank = session.labels.rank;
                 
-                if (!inputRankings[inputIdx]) {
-                    inputRankings[inputIdx] = [];
-                }
-                
-                inputRankings[inputIdx].push({
+                for (const aspectId in session.labels) {
+                    const label = session.labels[aspectId];
+                    if (!label.rank) continue;
+                    
+                    const key = `${inputIdx}-${aspectId}`;
+                    if (!inputRankings[key]) {
+                        inputRankings[key] = [];
+                    }
+                    
+                    inputRankings[key].push({
                     botId: botId,
-                    rank: rank
+                        rank: label.rank
                 });
+                }
             });
             
             // Apply rankings to UI
-            for (const inputIdx in inputRankings) {
-                const container = document.getElementById(`ranking-container-${inputIdx}`);
+            for (const key in inputRankings) {
+                const [inputIdx, aspectId] = key.split('-');
+                const container = document.getElementById(`ranking-container-${inputIdx}-${aspectId}`);
                 if (container) {
                     // Sort by rank
-                    inputRankings[inputIdx].sort((a, b) => a.rank - b.rank);
+                    inputRankings[key].sort((a, b) => a.rank - b.rank);
                     
                     // Reorder items
                     const fragment = document.createDocumentFragment();
-                    inputRankings[inputIdx].forEach(item => {
+                    inputRankings[key].forEach(item => {
                         const element = container.querySelector(`.ranking-item[data-bot-id="${item.botId}"]`);
                         if (element) {
                             fragment.appendChild(element);
@@ -535,7 +600,7 @@
                     
                     // Append any items not in the ranking
                     container.querySelectorAll('.ranking-item').forEach(item => {
-                        if (!inputRankings[inputIdx].some(r => r.botId === item.dataset.botId)) {
+                        if (!inputRankings[key].some(r => r.botId === item.dataset.botId)) {
                             fragment.appendChild(item);
                         }
                     });
