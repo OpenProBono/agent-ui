@@ -4,6 +4,60 @@
 
 {% block header_title %}Evaluation Dataset: {{ dataset.name }}{% endblock %}
 
+{% block styles %}
+<style>
+    /* Markdown content styling */
+    .markdown-content {
+        font-family: 'DM Sans', sans-serif;
+    }
+    .markdown-content h1, 
+    .markdown-content h2, 
+    .markdown-content h3, 
+    .markdown-content h4, 
+    .markdown-content h5, 
+    .markdown-content h6 {
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    .markdown-content pre {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        overflow-x: auto;
+    }
+    .markdown-content code {
+        background-color: #f8f9fa;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.25rem;
+        font-family: monospace;
+    }
+    .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+    }
+    .markdown-content blockquote {
+        border-left: 4px solid #dee2e6;
+        padding-left: 1rem;
+        color: #6c757d;
+    }
+    .markdown-content table {
+        width: 100%;
+        margin-bottom: 1rem;
+        border-collapse: collapse;
+    }
+    .markdown-content table th,
+    .markdown-content table td {
+        padding: 0.5rem;
+        border: 1px solid #dee2e6;
+    }
+    .markdown-content ul, 
+    .markdown-content ol {
+        padding-left: 2rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -127,8 +181,8 @@
                                                         {% set found_response = false %}
                                                         {% for session_id, session in dataset.sessions.items() %}
                                                             {% if session.bot_id == bot_id and session.input_idx == i %}
-                                                                <div class="response-content">
-                                                                    {{ session.output_text|safe }}
+                                                                <div class="response-content markdown-content" data-markdown-content>
+                                                                    {{ session.output_text }}
                                                                 </div>
                                                                 {% set found_response = true %}
                                                             {% endif %}
@@ -172,8 +226,16 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Render markdown content
+        const markdownElements = document.querySelectorAll('[data-markdown-content]');
+        markdownElements.forEach(element => {
+            const markdownText = element.textContent.trim();
+            element.innerHTML = marked.parse(markdownText);
+        });
+        
         // Fix for response pending message
         const responseContainers = document.querySelectorAll('.response-container');
         responseContainers.forEach(container => {

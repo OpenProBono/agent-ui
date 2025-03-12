@@ -30,6 +30,21 @@ from app_helper import (
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
+# Dictionary of search methods with display names and descriptions
+SEARCH_METHODS = {
+    "dynamic_serpapi": {
+        "display_name": "Dynamic Web Search (SerpAPI)",
+        "description": "Uses SerpAPI to perform dynamic web searches with customizable parameters."
+    },
+    "courtlistener": {
+        "display_name": "CourtListener",
+        "description": "Specialized search for legal cases and court documents in the US using CourtListener."
+    },
+    "bailii": {
+        "display_name": "BAILII",
+        "description": "Specialized search for legal cases and court documents in the UK using BAILII."
+    }
+}
 
 @app.route("/")
 @app.route("/dashboard")
@@ -55,6 +70,18 @@ def index():
         return redirect("/signup")
     return render_template("index.html", agents=agents, metrics=metrics, user=user)
 
+def fetch_sessions_api(user, id_token) -> List[dict]:
+    sessions = []
+    try:
+        with api_request("fetch_sessions", method="POST", data={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "sessions" in response_data:
+                    sessions = response_data["sessions"]
+                    logger.info(f"Fetched {len(sessions)} sessions for user")
+    except Exception:
+        logger.exception("Failed to fetch sessions for user")
+    return sessions
 
 @app.route("/signup")
 def signup():
@@ -87,10 +114,12 @@ def agents():
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     # Initialize agents list
     agents = []
+    public_agents = []
 
     # If user is authenticated, fetch real agent data
     if id_token:
         try:
+            # Fetch user's bots
             with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
                 if r.status_code == 200:
                     response_data = r.json()
@@ -102,37 +131,88 @@ def agents():
                             vdb_tools = bot.get("vdb_tools", [])
                             total_tools = len(search_tools) + len(vdb_tools)
 
-                            # Count resources (assuming vdb_tools represent resources)
-                            resources = len(vdb_tools)
+                            # Format the created_on date
+                            created_on = datetime.datetime.now()
+                            if "timestamp" in bot and bot["timestamp"]:
+                                try:
+                                    if isinstance(bot["timestamp"], dict) and "seconds" in bot["timestamp"]:
+                                        created_on = datetime.datetime.fromtimestamp(bot["timestamp"]["seconds"])
+                                    else:
+                                        created_on = datetime.datetime.fromisoformat(str(bot["timestamp"]))
+                                except (ValueError, TypeError):
+                                    pass
 
-                            # Determine if bot is dynamic (has search tools)
-                            is_dynamic = len(search_tools) > 0
-
+                            # Store the raw timestamp for client-side formatting
                             agent = {
                                 "id": bot_id,
                                 "name": bot.get("name", "Untitled Bot"),
-                                "created_on": datetime.datetime.fromisoformat(bot.get("created_at", datetime.datetime.now().isoformat())).date() if bot.get("created_at") else datetime.date.today(),
+                                "created_on": created_on.isoformat(),
                                 "tools": total_tools,
-                                "resources": resources,
-                                "dynamic": is_dynamic
                             }
                             agents.append(agent)
                 else:
                     logger.error(f"Failed to fetch agents: {r.status_code} - {r.text}")
-        except Exception:
-            logger.exception("Error fetching agents.")
+            
+            # Fetch public bots
+            with api_request("view_public_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                if r.status_code == 200:
+                    response_data = r.json()
+                    if response_data.get("message") == "Success" and "data" in response_data:
+                        # Transform the API response to match the expected format for the template
+                        for bot_id, bot in response_data["data"].items():
+                            # Skip if this bot is already in the user's personal bots
+                            if any(a["id"] == bot_id for a in agents):
+                                continue
+                                
+                            # Count total tools (search_tools + vdb_tools)
+                            search_tools = bot.get("search_tools", [])
+                            vdb_tools = bot.get("vdb_tools", [])
+                            total_tools = len(search_tools) + len(vdb_tools)
+
+                            # Format the created_on date
+                            created_on = datetime.datetime.now()
+                            if "timestamp" in bot and bot["timestamp"]:
+                                try:
+                                    if isinstance(bot["timestamp"], dict) and "seconds" in bot["timestamp"]:
+                                        created_on = datetime.datetime.fromtimestamp(bot["timestamp"]["seconds"])
+                                    else:
+                                        created_on = datetime.datetime.fromisoformat(str(bot["timestamp"]))
+                                except (ValueError, TypeError):
+                                    pass
+
+                            # Store the raw timestamp for client-side formatting
+                            agent = {
+                                "id": bot_id,
+                                "name": bot.get("name", "Untitled Bot"),
+                                "created_on": created_on.isoformat(),
+                                "tools": total_tools,
+                            }
+                            public_agents.append(agent)
+                else:
+                    logger.error(f"Failed to fetch public agents: {r.status_code} - {r.text}")
+        except Exception as e:
+            logger.exception(f"Error fetching agents: {str(e)}")
 
     # If no agents were fetched (either due to error or user not authenticated),
     # provide example data for display purposes
     if not agents:
         logger.warning("Using example agent data as no real data was fetched.")
+        current_time = datetime.datetime.now().isoformat()
         agents = [
-            {"id": 1, "name": "default_bot", "created_on": datetime.date.today(), "tools": 2, "resources": 10, "dynamic": True},
-            {"id": 2, "name": "default_anthropic", "created_on": datetime.date.today(), "tools": 1, "resources": 4, "dynamic": False},
-            {"id": 3, "name": "manual_sources_case_search", "created_on": datetime.date.today(), "tools": 4, "resources": 150, "dynamic": True},
+            {"id": "abc123", "name": "default_bot", "created_on": current_time, "tools": 2},
+            {"id": "def456", "name": "default_anthropic", "created_on": current_time, "tools": 1},
+            {"id": "ghi789", "name": "manual_sources_case_search", "created_on": current_time, "tools": 4},
+        ]
+    
+    if not public_agents:
+        logger.warning("Using example public agent data as no real data was fetched.")
+        current_time = datetime.datetime.now().isoformat()
+        public_agents = [
+            {"id": "pub123", "name": "Public Legal Assistant", "created_on": current_time, "tools": 3},
+            {"id": "pub456", "name": "Public Research Bot", "created_on": current_time, "tools": 2},
         ]
 
-    return render_template("agents.html", agents=agents, user=user)
+    return render_template("agents.html", agents=agents, public_agents=public_agents, user=user)
 
 
 @app.route("/resources")
@@ -328,28 +408,14 @@ def agent_info(agent):
 
 @app.route("/sessions", methods=["GET"])
 def get_sessions():
-    # Get all sessions for this browser from localStorage on client side
-    # Then fetch session info from API for each session ID
     try:
-        sessions = []
         logger.info("Sessions endpoint called.")
         id_token = session.get("id_token")
         if not id_token:
             return redirect("/signup")
-
-        for session_id in request.args.getlist("ids[]"):
-            logger.info("Fetching session info for session ID %s", session_id)
-            user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
-            data = {"session_id": session_id, "user": user}
-            with api_request("fetch_session", id_token=id_token, data=data) as r:
-                r.raise_for_status()
-                session_data = r.json()
-                sessions.append({
-                    "id": session_id,
-                    "title": session_data.get("title", "Untitled Chat"),
-                    "lastModified": session_data.get("timestamp"),
-                    "botId": session_data.get("bot_id"),
-                })
+        
+        user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+        sessions = fetch_sessions_api(user, id_token)
         logger.info("Sessions endpoint got responses: %s", sessions)
         return jsonify(sessions)
     except Exception:
@@ -381,16 +447,7 @@ def sessions_page():
         logger.exception("Failed to fetch bots for sessions page.")
 
     # Fetch all sessions for this user
-    sessions = []
-    try:
-        with api_request("fetch_sessions", method="POST", data={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
-            if r.status_code == 200:
-                response_data = r.json()
-                if response_data.get("message") == "Success" and "sessions" in response_data:
-                    sessions = response_data["sessions"]
-                    logger.info(f"Fetched {len(sessions)} sessions for user")
-    except Exception:
-        logger.exception("Failed to fetch sessions for user")
+    sessions = fetch_sessions_api(user, id_token)
 
     return render_template("sessions.html", user=user, bots=bots, sessions=sessions)
 
@@ -432,6 +489,22 @@ def get_status():
         return jsonify({"status": "not ok"}), 400
     logger.info("Status endpoint got OK response.")
     return jsonify({"status": "ok"})
+
+
+@app.route("/available_models", methods=["GET"])
+def get_available_models():
+    logger.info("Available models endpoint called")
+    id_token = session.get("id_token")
+    if not id_token:
+        return jsonify({"message": "Error", "data": {}})
+
+    try:
+        with api_request("available_models", method="GET", id_token=id_token) as r:
+            r.raise_for_status()
+            return jsonify(r.json())
+    except Exception:
+        logger.exception("Failed to get available models")
+        return jsonify({"message": "Error", "data": {}})
 
 
 @app.route("/feedback", methods=["POST"])
@@ -640,7 +713,7 @@ def create_agent():
         return redirect("/signup")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     if request.method == "GET":
-        return render_template("create_agent.html", user=user)
+        return render_template("create_agent.html", user=user, search_methods=SEARCH_METHODS)
     # Retrieve core fields
     bot_name = request.form.get("bot_name", None)
     system_prompt = request.form.get("system_prompt", None)
@@ -649,10 +722,6 @@ def create_agent():
     search_methods = request.form.getlist("search_methods[]")
     search_prefixes = request.form.getlist("search_prefixes[]")
     search_prompts = request.form.getlist("search_prompts[]")
-    vdb_names = request.form.getlist("vdb_names[]")
-    vdb_collections = request.form.getlist("vdb_collections[]")
-    vdb_ks = request.form.getlist("vdb_ks[]")
-    vdb_prompts = request.form.getlist("vdb_prompts[]")
 
     # Build search tools list
     search_tools = [
@@ -665,17 +734,6 @@ def create_agent():
         for i in range(len(search_names))
     ]
 
-    # Build VDB tools list
-    vdb_tools = [
-        {
-            "name": vdb_names[i],
-            "collection_name": vdb_collections[i],
-            "k": int(vdb_ks[i]),
-            "prompt": vdb_prompts[i],
-        }
-        for i in range(len(vdb_names))
-    ]
-
     # Chat model configuration
     chat_model = {
         "engine": request.form.get("engine", "openai"),
@@ -684,37 +742,29 @@ def create_agent():
         "seed": int(request.form.get("seed", 0)),
     }
 
-    bot_data = {
+    # Prepare the data for the API request
+    data = {
         "name": bot_name,
+        "system_prompt": system_prompt,
+        "message_prompt": message_prompt,
         "search_tools": search_tools,
-        "vdb_tools": vdb_tools,
+        "vdb_tools": [],  # Empty VDB tools list
         "chat_model": chat_model,
         "user": user,
+        "public": False  # Always set to False
     }
-    if system_prompt:
-        bot_data["system_prompt"] = system_prompt
-    if message_prompt:
-        bot_data["message_prompt"] = message_prompt
-
 
     try:
-        with api_request("create_bot", id_token=id_token, data=bot_data) as r:
+        with api_request("create_bot", method="POST", data=data, id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
+            logger.info("Created bot with ID: %s", result.get("bot_id"))
+            flash(f"Agent '{bot_name}' created successfully!", "success")
+            return redirect(f"/agent/{result.get('bot_id')}")
     except Exception:
         logger.exception("Create agent failed.")
-        return jsonify({"error": "Failed to create agent."}), 400
-    logger.debug("Created agent: %s", result)
-    if result["message"] != "Success":
-        logger.error("Create agent received an unexpected response.")
-        flash("Failed to create agent.", "error")
-        return render_template("create_agent.html")
-    if "bot_id" in result:
-        flash(f"Agent created successfully! Agent ID: {result['bot_id']}", "success")
-        flash(f"You can now chat with your agent at /agent/{result['bot_id']}", "info")
-        return render_template("create_agent.html")
-    flash("Failed to create agent.", "error")
-    return render_template("create_agent.html")
+        flash("Failed to create agent. Please try again.", "error")
+        return redirect("/create-agent")
 
 
 @app.route("/clone/<agent>", methods=["GET"])
@@ -773,7 +823,7 @@ def clone_agent(agent):
         "email": email,
         "firebase_uid": session.get("firebase_uid")
     }
-    return render_template("create_agent.html", clone=True, agent=agent, user=user)
+    return render_template("create_agent.html", clone=True, agent=agent, user=user, search_methods=SEARCH_METHODS)
 
 
 @app.route("/delete-agent/<agent_id>", methods=["GET"])

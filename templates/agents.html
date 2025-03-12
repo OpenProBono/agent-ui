@@ -22,6 +22,22 @@
             --bs-table-striped-color: #242424; /* Text color for striped rows */
             --bs-table-striped-bg: #f8fcfd;   /* Background color for striped rows */
         }
+        .section-divider {
+            margin: 40px 0 20px 0;
+            border-top: 1px solid #ddd;
+        }
+        .created-on-col {
+            min-width: 160px;
+        }
+        .id-col {
+            width: 80px;
+        }
+        .tools-col {
+            width: 80px;
+        }
+        .action-col {
+            width: 180px;
+        }
     </style>
 </head>
 <body>
@@ -57,22 +73,20 @@
                 <thead class="table-light">
                     <tr>
                         <th>Name</th>
-                        <th>Created On</th>
-                        <th>Tools</th>
-                        <th>Resources</th>
-                        <th>Dynamic</th>
-                        <th>Action</th>
+                        <th class="id-col">ID</th>
+                        <th class="created-on-col">Created On</th>
+                        <th class="tools-col">Tools</th>
+                        <th class="action-col">Action</th>
                     </tr>
                 </thead>
                 <tbody class="custom-table-striped">
                     {% for agent in agents %}
                     <tr>
                         <td>{{ agent.name }}</td>
-                        <td>{{ agent.created_on }}</td>
-                        <td>{{ agent.tools }}</td>
-                        <td>{{ agent.resources }}</td>
-                        <td>{{ "Yes" if agent.dynamic else "No" }}</td>
-                        <td>
+                        <td class="id-col">{{ agent.id[:4] }}</td>
+                        <td class="created-on-col">{{ agent.created_on }}</td>
+                        <td class="tools-col">{{ agent.tools }}</td>
+                        <td class="action-col">
                             <div class="btn-group" role="group">
                                 <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
                                 <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
@@ -103,7 +117,57 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- Public Agents Section -->
+        <div class="section-divider"></div>
+        <h2 class="mb-3">Public Agents</h2>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped custom-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th class="id-col">ID</th>
+                        <th class="created-on-col">Created On</th>
+                        <th class="tools-col">Tools</th>
+                        <th class="action-col">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="custom-table-striped">
+                    {% for agent in public_agents %}
+                    <tr>
+                        <td>{{ agent.name }}</td>
+                        <td class="id-col">{{ agent.id[:4] }}</td>
+                        <td class="created-on-col">{{ agent.created_on }}</td>
+                        <td class="tools-col">{{ agent.tools }}</td>
+                        <td class="action-col">
+                            <div class="btn-group" role="group">
+                                <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
+                                <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script>
+        // Format timestamps
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only select cells in the table body, not the header
+            document.querySelectorAll('tbody .created-on-col').forEach(element => {
+                const timestamp = element.textContent;
+                if (timestamp && timestamp.trim()) {
+                    try {
+                        element.textContent = moment(timestamp).format('MMM D, YYYY [at] h:mm A');
+                    } catch (e) {
+                        console.error('Error formatting timestamp:', e);
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

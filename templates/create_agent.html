@@ -80,7 +80,9 @@
             <div class="form-section">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h2>Search Tools Configuration</h2>
-                    <button type="button" class="btn btn-primary" id="add-search-tool-btn">Add Search Tool</button>
+                    <button type="button" class="btn btn-primary" id="add-search-tool-btn">
+                        <i class="bi bi-plus-circle"></i> Add Search Tool
+                    </button>
                 </div>
                 <div id="search-tools-container">
                     <!-- Dynamic Search Tool fields will be added here -->
@@ -97,12 +99,21 @@
                         </div>
                         <div class="form-group my-2">
                             <label>Method</label>
-                            <select class="form-control" name="search_methods[]">
-                                <option value="dynamic_serpapi" {{ "selected" if tool.method == "dynamic_serpapi" else "" }}>dynamic_serpapi</option>
-                                <option value="serpapi" {{ "selected" if tool.method == "serpapi" else "" }}>serpapi</option>
-                                <option value="google" {{ "selected" if tool.method == "google" else "" }}>google</option>
-                                <option value="courtlistener" {{ "selected" if tool.method == "courtlistener" else "" }}>courtlistener</option>
+                            <select class="form-control search-method-select" name="search_methods[]">
+                                {% for method_key, method_info in search_methods.items() %}
+                                <option value="{{ method_key }}" {{ "selected" if tool.method == method_key else "" }} 
+                                    data-description="{{ method_info.description }}">
+                                    {{ method_info.display_name }}
+                                </option>
+                                {% endfor %}
                             </select>
+                            <small class="form-text text-muted method-description">
+                                {% for method_key, method_info in search_methods.items() %}
+                                    {% if tool.method == method_key %}
+                                        {{ method_info.description }}
+                                    {% endif %}
+                                {% endfor %}
+                            </small>
                         </div>
                         <div class="form-group my-2">
                             <label>Prefix</label>
@@ -111,45 +122,6 @@
                         <div class="form-group my-2">
                             <label>Prompt</label>
                             <textarea class="form-control" name="search_prompts[]" rows="2" placeholder="Instructions on when and how to use this tool">{{ tool.prompt }}</textarea>
-                        </div>
-                    </div>
-                    {% endfor %}
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- VDB Tools Configuration -->
-            <div class="form-section">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h2>VDB Tools Configuration</h2>
-                    <button type="button" class="btn btn-primary" id="add-vdb-tool-btn">Add VDB Tool</button>
-                </div>
-                <div id="vdb-tools-container">
-                    <!-- Dynamic VDB Tool fields will be added here -->
-                    {% if clone %}
-                    {% for tool in agent.vdb_tools %}
-                    <div class="border p-3 mb-3 rounded">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5>VDB Tool {{ loop.index }}</h5>
-                            <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
-                        </div>
-                        <div class="form-group my-2">
-                            <label>VDB Name</label>
-                            <input type="text" class="form-control" name="vdb_names[]" placeholder="Unique identifier for this VDB tool" value="{{ tool.name }}">
-                        </div>
-                        <div class="form-group my-2">
-                            <label>Collection Name</label>
-                            <select class="form-control" name="vdb_collections[]">
-                                <option value="courtlistener" {{ "selected" if tool.collection_name == "courtlistener" else "" }}>courtlistener</option>
-                            </select>
-                        </div>
-                        <div class="form-group my-2">
-                            <label>K</label>
-                            <input type="number" class="form-control" name="vdb_ks[]" min="1" value="{{ tool.k }}" placeholder="Number of results to return">
-                        </div>
-                        <div class="form-group my-2">
-                            <label>VDB Prompt</label>
-                            <textarea class="form-control" name="vdb_prompts[]" rows="2" placeholder="Instructions on when and how to use this VDB tool">{{ tool.prompt }}</textarea>
                         </div>
                     </div>
                     {% endfor %}
@@ -166,16 +138,21 @@
                         {% if clone %}
                         <option value="openai" {{ "selected" if agent.engine == "openai" else "" }}>openai</option>
                         <option value="anthropic" {{ "selected" if agent.engine == "anthropic" else "" }}>anthropic</option>
+                        <!-- <option value="google" {{ "selected" if agent.engine == "google" else "" }}>google</option>
+                        <option value="hive" {{ "selected" if agent.engine == "hive" else "" }}>hive</option> -->
                         {% else %}
                         <option value="openai" selected>openai</option>
                         <option value="anthropic">anthropic</option>
+                        <!-- <option value="google">google</option>
+                        <option value="hive">hive</option> -->
                         {% endif %}
                     </select>
                 </div>
                 <div class="form-group my-2">
                     <label for="model">Model</label>
-                    <input type="text" class="form-control" id="model" name="model" {% if clone %}value="{{ agent.model }}"{% endif %}
-                    placeholder="Specific model to use (e.g., 'gpt-4')">
+                    <select class="form-control" id="model" name="model">
+                        <!-- Options will be populated dynamically based on the selected engine -->
+                    </select>
                 </div>
                 <div class="form-group my-2">
                     <label for="temperature">Model Temperature</label>
@@ -195,12 +172,109 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    
     <script>
+        // Global variable to store available models
+        let availableModels = {};
+        
+        // Global variable to store search methods data
+        let searchMethodsData = {{ search_methods | tojson | safe }};
+        
+        // Fetch available models when the page loads
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const response = await fetch('/available_models');
+                const data = await response.json();
+                
+                if (data.message === "Success") {
+                    availableModels = data.data;
+                    
+                    // Initialize model dropdown based on current engine selection
+                    updateModelOptions();
+                }
+                
+                // Add event listeners to all search method selects
+                setupMethodSelectListeners();
+            } catch (error) {
+                console.error('Error fetching available models:', error);
+            }
+        });
+        
+        // Function to set up event listeners for method selects
+        function setupMethodSelectListeners() {
+            // For existing selects
+            document.querySelectorAll('.search-method-select').forEach(select => {
+                if (!select.hasAttribute('data-listener-attached')) {
+                    select.setAttribute('data-listener-attached', 'true');
+                    select.addEventListener('change', updateMethodDescription);
+                }
+            });
+        }
+        
+        // Function to update the method description
+        function updateMethodDescription(event) {
+            const select = event.target;
+            const methodKey = select.value;
+            const descriptionElement = select.nextElementSibling;
+            
+            if (descriptionElement && descriptionElement.classList.contains('method-description')) {
+                if (methodKey && searchMethodsData[methodKey]) {
+                    descriptionElement.textContent = searchMethodsData[methodKey].description;
+                } else {
+                    descriptionElement.textContent = 'Select a method to see its description';
+                }
+            }
+        }
+
+        // Update model options when engine changes
+        document.getElementById('engine').addEventListener('change', updateModelOptions);
+        
+        function updateModelOptions() {
+            const engineSelect = document.getElementById('engine');
+            const modelSelect = document.getElementById('model');
+            const selectedEngine = engineSelect.value;
+            
+            // Clear existing options
+            modelSelect.innerHTML = '';
+            
+            // Add new options based on selected engine
+            if (availableModels[selectedEngine]) {
+                availableModels[selectedEngine].forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    
+                    // If cloning, select the current model
+                    {% if clone %}
+                    if (model === "{{ agent.model }}") {
+                        option.selected = true;
+                    }
+                    {% endif %}
+                    
+                    modelSelect.appendChild(option);
+                });
+            } else {
+                // If models haven't loaded yet, add a placeholder option
+                const option = document.createElement('option');
+                option.value = "";
+                option.textContent = "Loading models...";
+                modelSelect.appendChild(option);
+            }
+        }
+
         // --- Search Tools Section ---
         function addSearchToolField(name, method, prefix, prompt) {
             const container = document.getElementById('search-tools-container');
             const div = document.createElement('div');
-            div.classList.add('border', 'p-3', 'mb-3');
+            div.classList.add('border', 'p-3', 'mb-3', 'rounded');
+            
+            // Generate options HTML for search methods
+            let optionsHtml = '';
+            for (const [key, info] of Object.entries(searchMethodsData)) {
+                optionsHtml += `<option value="${key}" ${method === key ? 'selected' : ''} 
+                    data-description="${info.description}">${info.display_name}</option>`;
+            }
+            
             div.innerHTML = `
                 <div class="d-flex justify-content-between align-items-center">
                     <h5>Search Tool</h5>
@@ -212,12 +286,12 @@
                 </div>
                 <div class="form-group my-2">
                     <label>Method</label>
-                    <select class="form-control" name="search_methods[]">
-                        <option value="dynamic_serpapi" ${method === 'dynamic_serpapi' ? 'selected' : ''}>dynamic_serpapi</option>
-                        <option value="serpapi" ${method === 'serpapi' ? 'selected' : ''}>serpapi</option>
-                        <option value="google" ${method === 'google' ? 'selected' : ''}>google</option>
-                        <option value="courtlistener" ${method === 'courtlistener' ? 'selected' : ''}>courtlistener</option>
+                    <select class="form-control search-method-select" name="search_methods[]">
+                        ${optionsHtml}
                     </select>
+                    <small class="form-text text-muted method-description">
+                        ${method && searchMethodsData[method] ? searchMethodsData[method].description : 'Select a method to see its description'}
+                    </small>
                 </div>
                 <div class="form-group my-2">
                     <label>Prefix</label>
@@ -233,6 +307,14 @@
                 div.remove();
                 reIndexSearchToolFields();
             });
+            
+            // Attach event listener for the method select
+            const methodSelect = div.querySelector('.search-method-select');
+            if (methodSelect) {
+                methodSelect.setAttribute('data-listener-attached', 'true');
+                methodSelect.addEventListener('change', updateMethodDescription);
+            }
+            
             container.appendChild(div);
             reIndexSearchToolFields();
         }
@@ -245,59 +327,8 @@
             }
         }
 
-        // --- VDB Tools Section ---
-        function addVdbToolField(name, collName, k, prompt) {
-            const container = document.getElementById('vdb-tools-container');
-            const div = document.createElement('div');
-            div.classList.add('border', 'p-3', 'mb-3');
-            div.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5>VDB Tool</h5>
-                    <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
-                </div>
-                <div class="form-group my-2">
-                    <label>VDB Name</label>
-                    <input type="text" class="form-control" name="vdb_names[]" placeholder="Unique identifier for this VDB tool" value="${name}">
-                </div>
-                <div class="form-group my-2">
-                    <label>Collection Name</label>
-                    <select class="form-control" name="vdb_collections[]">
-                        <option value="courtlistener" ${collName === 'courtlistener' ? 'selected' : ''}>courtlistener</option>
-                    </select>
-                </div>
-                <div class="form-group my-2">
-                    <label>K</label>
-                    <input type="number" class="form-control" name="vdb_ks[]" min="1" value="${k}" placeholder="Number of results to return">
-                </div>
-                <div class="form-group my-2">
-                    <label>VDB Prompt</label>
-                    <textarea class="form-control" name="vdb_prompts[]" rows="2" placeholder="Instructions on when and how to use this VDB tool">${prompt}</textarea>
-                </div>
-            `;
-            // Attach event listener for the remove button
-            div.querySelector('.remove-vdb-tool').addEventListener('click', function() {
-                div.remove();
-                reIndexVdbToolFields();
-            });
-            container.appendChild(div);
-            reIndexVdbToolFields();
-        }
-
-        function reIndexVdbToolFields() {
-            const container = document.getElementById('vdb-tools-container');
-            const groups = container.children;
-            for (let i = 0; i < groups.length; i++) {
-                groups[i].querySelector('h5').innerText = `VDB Tool ${i + 1}`;
-            }
-        }
-
-        // Attach event listeners to the Add buttons
-        // pass empty string args to add search tool field
+        // Attach event listeners to the Add button
         document.getElementById('add-search-tool-btn').addEventListener('click', () => addSearchToolField('', '', '', ''));
-        document.getElementById('add-vdb-tool-btn').addEventListener('click', () => addVdbToolField('', '', 4, ''));
-
-        // Optionally, you can add one default search tool on load:
-        // window.addEventListener('load', addSearchToolField);
     </script>
 </body>
 </html>

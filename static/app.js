@@ -533,14 +533,12 @@ async function sendMessage() {
         if (!currentSessionId) {
             await getNewSession(botId);
         }
-        let sessions = loadSavedSessions();
-        // If it's a new session, add it to local storage
-        if (!sessions.find(session => session.id == currentSessionId)) {
-            const newSession = {"title": "New Chat", "lastModified": getFirebaseDate(), "id": currentSessionId, "botId": botId};
-            sessions.push(newSession);
-            saveSessions(sessions);
-            addSessionToSidebar(newSession);
+        
+        // After creating a new session, refresh the sidebar to show the new session
+        if (document.getElementById('left-sidebar') && !document.getElementById(`session-${currentSessionId}`)) {
+            await displaySessionsSidebar();
         }
+        
         // Only use FormData if we have files
         if (userFiles.length > 0) {
             const formData = new FormData();
@@ -714,11 +712,8 @@ function handleStreamEvent(data) {
             if (botMessageContainer) {
                 handleEndOfBotResponse();
             }
-            let sessions = loadSavedSessions();
-            // Get the title if it's a new session
-            if (sessions.some((session) => session.id === currentSessionId && session.title === "New Chat")) {
-                getCurrentSessionTitle();
-            }
+            // Refresh the sidebar to update session titles
+            displaySessionsSidebar();
             break;
         default:
             console.warn('Unknown event type:', data.type);
@@ -1081,37 +1076,46 @@ async function switchSession(sessionId) {
     // Add a status message in case there's an error loading the session
     const statusMsg = document.getElementById("statusMsg");
 
-    // Retrieve session and bot from local storage
-    let sessions = loadSavedSessions();
-    let session = sessions.find(session => session.id === sessionId);
-    let currentBotId = session?.botId;
-
-    if (!currentBotId) {
-        statusMsg.innerHTML = "Failed to load session. Check the URL and try again.";
-        return;
-    }
-
-    // Add new highlighted session
-    document.getElementById(`session-${sessionId}`).classList.add('active-session');
-
-    // Update current session
-    currentSessionId = sessionId;
-    botMessageIndex = 0;
-    botMessageTexts = [];
-
-    // Update URL
-    window.history.pushState({}, '', `/agent/${currentBotId}/session/${sessionId}`);
-
-    // Hide chatbox placeholder texts
-    const placeholderChat = document.querySelector('.chat-container .placeholder-text');
-    placeholderChat.classList.remove('d-block');
-    placeholderChat.classList.add('d-none');
-
-    // Get bot info
+    // Get session info from server
     try {
-        const response = await fetch(`/agent/${currentBotId}/info`);
-        if (response.ok) {
-            const result = await response.json();
+        // Fetch all sessions and find the one with matching ID
+        const response = await fetch('/sessions');
+        if (!response.ok) throw new Error('Failed to get sessions from server');
+        let allSessions = await response.json();
+        
+        // Find the session with the matching ID
+        const session = allSessions.find(s => s.session_id === sessionId);
+        
+        if (!session) {
+            statusMsg.innerHTML = "Failed to load session. Check the URL and try again.";
+            return;
+        }
+        
+        const currentBotId = session.bot_id;
+
+        // Add new highlighted session
+        const sessionElement = document.getElementById(`session-${sessionId}`);
+        if (sessionElement) {
+            sessionElement.classList.add('active-session');
+        }
+
+        // Update current session
+        currentSessionId = sessionId;
+        botMessageIndex = 0;
+        botMessageTexts = [];
+
+        // Update URL
+        window.history.pushState({}, '', `/agent/${currentBotId}/session/${sessionId}`);
+
+        // Hide chatbox placeholder texts
+        const placeholderChat = document.querySelector('.chat-container .placeholder-text');
+        placeholderChat.classList.remove('d-block');
+        placeholderChat.classList.add('d-none');
+
+        // Get bot info
+        const botResponse = await fetch(`/agent/${currentBotId}/info`);
+        if (botResponse.ok) {
+            const result = await botResponse.json();
             const name = document.getElementById('name');
             const provider = document.getElementById('provider');
             const model = document.getElementById('model');
@@ -1130,8 +1134,9 @@ async function switchSession(sessionId) {
             }
         }
     } catch (error) {
-        console.error('Failed to load agent:', error);
-        addMessageToChat('error', 'Failed to load agent.');
+        console.error('Failed to load session:', error);
+        statusMsg.innerHTML = "Failed to load session. Check the URL and try again.";
+        return;
     }
 
     // Get messages
@@ -1178,33 +1183,22 @@ function clearSession() {
     botMessageTexts = [];
 }
 
-async function getCurrentSessionTitle() {
-    const response = await fetch(`/sessions?ids[]=${currentSessionId}`);
-    if (!response.ok) throw new Error('Failed to get sessions from server');
-    let fetchedSessions = await response.json();
-    let savedSessions = loadSavedSessions();
-    // if savedSessions contains a session with id === fetchedSessions[0].id,
-    // then replace it with the fetched session
-    if (savedSessions.some((session) => session.id === fetchedSessions[0].id)) {
-        savedSessions[savedSessions.findIndex((session) => session.id === fetchedSessions[0].id)] = fetchedSessions[0];
-        saveSessions(savedSessions);
-        // update title in sidebar
-        const titleElement = document.querySelector(`#session-${currentSessionId} a`);
-        titleElement.innerText = fetchedSessions[0].title;
-        titleElement.title = fetchedSessions[0].title;
+async function fetchSessionsFromServer() {
+    try {
+        const response = await fetch('/sessions');
+        if (!response.ok) throw new Error('Failed to get sessions from server');
+        const data = await response.json();
+        console.log('Sessions:', data);
+        // The sessions endpoint returns an array directly
+        return data || [];
+    } catch (error) {
+        console.error('Error fetching sessions:', error);
+        return [];
     }
 }
 
-function loadSavedSessions() {
-    return JSON.parse(localStorage.getItem('sessions') || '[]');
-}
-
-function saveSessions(sessions) {
-    localStorage.setItem('sessions', JSON.stringify(sessions));
-}
-
-function displaySessionsSidebar() {
-    const sessions = loadSavedSessions();
+async function displaySessionsSidebar() {
+    const sessions = await fetchSessionsFromServer();
     const sessionsList = document.getElementById('sessionsList');
     sessionsList.innerHTML = '';
     
@@ -1218,9 +1212,9 @@ function displaySessionsSidebar() {
     
     const now = new Date();
     sessions.forEach(session => {
-        if (!session.lastModified || !session.title)
+        if (!session.timestamp || !session.title)
             return;
-        const lastModified = new Date(session.lastModified);
+        const lastModified = new Date(session.timestamp);
         const ageInDays = (now - lastModified) / (1000 * 60 * 60 * 24);
 
         if (lastModified.toDateString() === now.toDateString()) {
@@ -1236,7 +1230,7 @@ function displaySessionsSidebar() {
 
     // Sort sessions within each group
     for (const sessions of Object.values(grouped)) {
-        sessions.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+        sessions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     }
 
     // Render sessions
@@ -1249,9 +1243,9 @@ function displaySessionsSidebar() {
             <div class="time-label">${period.replace('_', ' ')}</div>
             <ul class="list-unstyled">
                 ${sessions.map(session => `
-                    <li id="session-${session.id}" class="conversation-item">
+                    <li id="session-${session.session_id}" class="conversation-item">
                         <a href="#" class="text-decoration-none text-truncate d-block" 
-                            onclick="switchSession('${session.id}'); return false;"
+                            onclick="switchSession('${session.session_id}'); return false;"
                             title="${session.title ? session.title : "Untitled Chat"}">
                             ${session.title ? session.title : "Untitled Chat"}
                         </a>
@@ -1260,24 +1254,6 @@ function displaySessionsSidebar() {
             </ul>
         `;
         sessionsList.appendChild(timeGroup);
-    }
-}
-
-function addSessionToSidebar(session) {
-    const sessionsList = document.getElementById('sessionsList');
-    const timeGroup = sessionsList.querySelector('.list-unstyled');
-    if (!timeGroup) {
-        // There aren't any sessions, build the list
-        displaySessionsSidebar();
-    } else {
-        const sessionListEntry = document.createElement('li');
-        sessionListEntry.className = "conversation-item";
-        sessionListEntry.id = `session-${session.id}`;
-        sessionListEntry.innerHTML = `<a href="#" class="text-decoration-none text-truncate d-block" 
-            onclick="switchSession('${session.id}'); return false;">
-            ${session.title}
-        </a>`;
-        timeGroup.insertBefore(sessionListEntry, timeGroup.firstChild);
     }
 }
 
@@ -1333,7 +1309,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         document.querySelector('.input-group').classList.replace('d-flex', 'd-none');
         document.getElementById('toolbar').classList.replace('d-flex', 'd-none');
     }
-    displaySessionsSidebar();
+    
+    // Load sessions from server
+    await displaySessionsSidebar();
 
     // Disable send while checking if server is alive
     document.getElementById("sendButton").setAttribute("disabled", "");

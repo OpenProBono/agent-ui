@@ -60,7 +60,7 @@
                                 <span class="badge bg-success">Complete</span>
                             {% endif %}
                         </td>
-                        <td>{{ dataset.created_at|default("N/A") }}</td>
+                        <td class="timestamp-col">{{ dataset.timestamp or dataset.created_at|default("N/A") }}</td>
                         <td>
                             <div class="btn-group">
                                 <a href="/eval-dataset/{{ id }}" class="btn btn-sm btn-info">View Results</a>
@@ -135,6 +135,18 @@
 <script>
     // Auto-refresh the page every 60 seconds if there are in-progress datasets
     document.addEventListener('DOMContentLoaded', function() {
+        // Format timestamps
+        document.querySelectorAll('.timestamp-col').forEach(element => {
+            const timestamp = element.textContent;
+            if (timestamp && timestamp.trim() && timestamp !== 'N/A') {
+                try {
+                    element.textContent = moment(timestamp).format('MMM D, YYYY [at] h:mm A');
+                } catch (e) {
+                    console.error('Error formatting timestamp:', e);
+                }
+            }
+        });
+        
         const hasInProgressDatasets = document.querySelectorAll('.progress-bar-animated').length > 0;
         
         if (hasInProgressDatasets) {
