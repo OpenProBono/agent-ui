@@ -1120,8 +1120,8 @@ async function switchSession(sessionId) {
             const provider = document.getElementById('provider');
             const model = document.getElementById('model');
             const tools = document.getElementById('tools');
-            // Capitalize the first letter of each word and replace underscores with spaces
-            const displayName = currentBotId.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+            // Use the agent name from the API response if available, otherwise format the agent ID
+            const displayName = result.data.name || currentBotId.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
             name.innerHTML = `<strong>Name:</strong> ${displayName}`;
             provider.innerHTML = `<strong>Provider:</strong> ${result.data.chat_model.engine}`;
             model.innerHTML = `<strong>Model:</strong> ${result.data.chat_model.model}`;
@@ -1188,7 +1188,7 @@ async function fetchSessionsFromServer() {
         const response = await fetch('/sessions');
         if (!response.ok) throw new Error('Failed to get sessions from server');
         const data = await response.json();
-        console.log('Sessions:', data);
+        // console.log('Sessions:', data);
         // The sessions endpoint returns an array directly
         return data || [];
     } catch (error) {
