@@ -283,6 +283,7 @@
                 <i class="bi bi-lock"></i>
                 <input type="password" id="password" placeholder="Password" required />
             </div>
+            <input type="hidden" id="redirect-to" value="{{ redirect_to|default('/') }}" />
             <button type="submit" id="submit-btn">Sign In</button>
         </form>
         
@@ -379,6 +380,7 @@
 
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const redirectTo = getRedirectTo();
 
             try {
                 let userCredential;
@@ -402,7 +404,8 @@
                         "idToken": idToken,
                         "refreshToken": refreshToken,
                         "email": email,
-                        "firebase_uid": user.uid
+                        "firebase_uid": user.uid,
+                        "redirect_to": redirectTo
                     }),
                 });
                 
@@ -501,6 +504,7 @@
                         // Get fresh tokens
                         const idToken = await user.getIdToken(true);
                         const refreshToken = user.refreshToken;
+                        const redirectTo = getRedirectTo();
                         
                         // Send to backend
                         const response = await fetch('/login', {
@@ -510,7 +514,8 @@
                                 "idToken": idToken,
                                 "refreshToken": refreshToken,
                                 "email": user.email,
-                                "firebase_uid": user.uid
+                                "firebase_uid": user.uid,
+                                "redirect_to": redirectTo
                             }),
                         });
                         
@@ -572,6 +577,19 @@
         
         // Call the function when the page loads
         checkForLogout();
+
+        // Get redirect_to parameter from URL or template
+        function getRedirectTo() {
+            // First check if it's passed from the server-side template
+            const redirectToElement = document.getElementById('redirect-to');
+            if (redirectToElement && redirectToElement.value) {
+                return redirectToElement.value;
+            }
+            
+            // Otherwise check URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('redirect_to') || '/';
+        }
     </script>
 </body>
 </html>

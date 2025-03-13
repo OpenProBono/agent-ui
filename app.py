@@ -66,18 +66,70 @@ def check_auth():
     """
     Middleware to check if user is authenticated before processing requests.
     Redirects to login page if not authenticated and not accessing a public route.
+    Also handles token refresh to prevent redirect loops.
     """
     # Skip authentication check for public routes
     if request.endpoint in PUBLIC_ROUTES:
         return
+    
+    # Skip authentication for OPTIONS requests (CORS preflight)
+    if request.method == 'OPTIONS':
+        return
         
     # Check if user is authenticated
-    if not session.get('id_token'):
+    id_token = session.get('id_token')
+    if not id_token:
         # If AJAX request, return 401 Unauthorized
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
-        # Otherwise redirect to login page
-        return redirect(url_for('login_page'))
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('Accept') == 'application/json':
+            return jsonify({'status': 'error', 'message': 'Authentication required', 'code': 'auth_required'}), 401
+        
+        # Get the current URL to redirect back after login
+        next_url = request.url
+        # Don't include the host in the URL
+        if next_url.startswith(request.host_url):
+            next_url = next_url[len(request.host_url.rstrip('/')):]
+        
+        # Otherwise redirect to login page with a clear message
+        flash("Please log in to continue.", "info")
+        return redirect(url_for('login_page', redirect_to=next_url))
+    
+    # Check if token needs refresh
+    if should_refresh_token():
+        try:
+            # Try to refresh the token
+            refreshed = refresh_token()
+            if not refreshed:
+                # If refresh failed, clear the session and redirect to login
+                session.clear()
+                # If AJAX request, return 401 Unauthorized
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('Accept') == 'application/json':
+                    return jsonify({'status': 'error', 'message': 'Session expired. Please log in again.', 'code': 'session_expired'}), 401
+                
+                # Get the current URL to redirect back after login
+                next_url = request.url
+                # Don't include the host in the URL
+                if next_url.startswith(request.host_url):
+                    next_url = next_url[len(request.host_url.rstrip('/')):]
+                
+                # Otherwise redirect to login page with a clear message
+                flash("Your session has expired. Please log in again.", "warning")
+                return redirect(url_for('login_page', redirect_to=next_url))
+        except Exception as e:
+            logger.exception("Token refresh failed")
+            session.clear()
+            # If AJAX request, return 401 Unauthorized
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.headers.get('Accept') == 'application/json':
+                return jsonify({'status': 'error', 'message': 'Authentication error. Please log in again.', 'code': 'auth_error'}), 401
+            
+            # Get the current URL to redirect back after login
+            next_url = request.url
+            # Don't include the host in the URL
+            if next_url.startswith(request.host_url):
+                next_url = next_url[len(request.host_url.rstrip('/')):]
+            
+            # Otherwise redirect to login page with a clear message
+            flash("Authentication error. Please log in again.", "error")
+            return redirect(url_for('login_page', redirect_to=next_url))
 
 # Authentication decorator
 def login_required(f):
@@ -86,23 +138,18 @@ def login_required(f):
         id_token = session.get("id_token")
         
         if not id_token:
-            # User is not logged in, redirect to login page
-            return redirect(url_for('login_page'))
-        
-        # Check if token needs refresh
-        if should_refresh_token():
-            try:
-                # Try to refresh the token
-                refreshed = refresh_token()
-                if not refreshed:
-                    # If refresh failed, redirect to login
-                    flash("Your session has expired. Please log in again.", "warning")
-                    return redirect(url_for('login_page'))
-            except Exception as e:
-                logger.exception("Token refresh failed")
-                flash("Authentication error. Please log in again.", "error")
-                return redirect(url_for('login_page'))
+            # Get the current URL to redirect back after login
+            next_url = request.url
+            # Don't include the host in the URL
+            if next_url.startswith(request.host_url):
+                next_url = next_url[len(request.host_url.rstrip('/')):]
                 
+            # User is not logged in, redirect to login page
+            flash("Please log in to continue.", "info")
+            return redirect(url_for('login_page', redirect_to=next_url))
+        
+        # Token refresh is now handled by the check_auth middleware
+        # so we can just proceed with the function call
         return f(*args, **kwargs)
     return decorated_function
 
@@ -111,9 +158,23 @@ def should_refresh_token():
     Check if the token needs to be refreshed based on expiration time.
     Uses a timestamp-based approach to avoid decoding JWT on every request.
     """
-    token_timestamp = session.get("token_timestamp", 0)
-    # Firebase ID tokens expire after 1 hour, refresh if older than 55 minutes
-    return (time.time() - token_timestamp) > (55 * 60)
+    token_timestamp = session.get("token_timestamp")
+    
+    # If no timestamp exists, token should be refreshed
+    if token_timestamp is None:
+        return True
+    
+    try:
+        # Convert to float if it's a string
+        if isinstance(token_timestamp, str):
+            token_timestamp = float(token_timestamp)
+        
+        # Firebase ID tokens expire after 1 hour, refresh if older than 55 minutes
+        return (time.time() - token_timestamp) > (55 * 60)
+    except (ValueError, TypeError):
+        logger.exception("Invalid token timestamp format")
+        # If we can't parse the timestamp, assume token needs refresh
+        return True
 
 def refresh_token():
     """
@@ -138,7 +199,8 @@ def refresh_token():
             "refresh_token": refresh_token_value
         }
         
-        response = requests.post(refresh_url, json=refresh_payload)
+        logger.info("Attempting to refresh Firebase token")
+        response = requests.post(refresh_url, json=refresh_payload, timeout=10)
         
         if response.status_code == 200:
             response_data = response.json()
@@ -149,8 +211,22 @@ def refresh_token():
                 session["token_timestamp"] = time.time()
                 logger.info("Successfully refreshed Firebase token")
                 return True
+            else:
+                logger.warning("Firebase token refresh response missing id_token")
+                return False
                 
-        logger.warning(f"Failed to refresh token: {response.status_code} - {response.text}")
+        # Log specific error codes for better debugging
+        if response.status_code == 400:
+            logger.warning("Firebase token refresh failed: Invalid refresh token (400)")
+        elif response.status_code == 401:
+            logger.warning("Firebase token refresh failed: Unauthorized (401)")
+        elif response.status_code == 403:
+            logger.warning("Firebase token refresh failed: Forbidden (403)")
+        else:
+            logger.warning(f"Failed to refresh token: {response.status_code} - {response.text}")
+        return False
+    except requests.exceptions.Timeout:
+        logger.warning("Firebase token refresh request timed out")
         return False
     except Exception:
         logger.exception("Token refresh request failed")
@@ -180,10 +256,37 @@ def signup():
 @app.route("/login", methods=["GET"])
 def login_page():
     logger.info("Login page endpoint called.")
-    # If user is already logged in, redirect to dashboard
-    if session.get("id_token"):
-        return redirect(url_for("agents"))
-    return render_template("signup.html")
+    
+    # Get the redirect_to parameter if it exists
+    redirect_to = request.args.get('redirect_to', url_for('agents'))
+    
+    # Check if there's a valid token that doesn't need refresh
+    id_token = session.get("id_token")
+    if id_token and not should_refresh_token():
+        # User is already logged in with a valid token, redirect to dashboard or requested page
+        logger.info("User already logged in, redirecting to: %s", redirect_to)
+        return redirect(redirect_to)
+    
+    # If token exists but needs refresh, try to refresh it
+    if id_token and should_refresh_token():
+        try:
+            refreshed = refresh_token()
+            if refreshed:
+                # Successfully refreshed, redirect to dashboard or requested page
+                logger.info("Token refreshed, redirecting to: %s", redirect_to)
+                return redirect(redirect_to)
+            else:
+                # Failed to refresh, clear session
+                session.clear()
+                flash("Your session has expired. Please log in again.", "warning")
+        except Exception:
+            # Error refreshing, clear session
+            logger.exception("Error refreshing token on login page")
+            session.clear()
+            flash("Authentication error. Please log in again.", "error")
+    
+    # Pass the redirect_to parameter to the template
+    return render_template("signup.html", redirect_to=redirect_to)
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -194,6 +297,9 @@ def login():
         if not data:
             logger.error("No JSON data in login request")
             return jsonify({"status": "error", "message": "Invalid request format"}), 400
+        
+        # Clear any existing session data to prevent stale data
+        session.clear()
             
         # Store user information in session
         session["email"] = data.get("email")
@@ -203,9 +309,12 @@ def login():
         session["token_timestamp"] = time.time()
         session.permanent = True  # Use the permanent session lifetime we configured
         
-        logger.info(f"User logged in: {session['email']}")
-        # Return success response
-        return jsonify({"status": "success", "redirect": url_for("agents")})
+        # Get the redirect_to parameter if it exists
+        redirect_to = data.get("redirect_to", url_for("agents"))
+        
+        logger.info(f"User logged in: {session['email']}, redirecting to: {redirect_to}")
+        # Return success response with the redirect URL
+        return jsonify({"status": "success", "redirect": redirect_to})
     except Exception as e:
         logger.exception("Login error")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -213,10 +322,17 @@ def login():
 @app.route("/logout")
 def logout():
     logger.info("Logout endpoint called.")
+    # Get the current user email for logging purposes
+    user_email = session.get("email", "Unknown user")
+    
     # Clear all session data
     session.clear()
+    
+    logger.info(f"User logged out: {user_email}")
+    
     # Return a page with JavaScript to sign out from Firebase
-    return render_template("logout.html")
+    # Add a parameter to indicate this is an explicit logout
+    return render_template("logout.html", explicit_logout=True)
 
 @app.route("/")
 @app.route("/index")

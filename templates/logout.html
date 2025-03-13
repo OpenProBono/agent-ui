@@ -40,7 +40,7 @@
     </style>
 </head>
 <body>
-    <div class="logout-container">
+    <div class="logout-container" data-explicit-logout="{{ 'true' if explicit_logout else 'false' }}">
         <h2>Logging Out</h2>
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
@@ -61,22 +61,28 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
 
+        // Get the explicit_logout parameter from a data attribute
+        const logoutContainer = document.querySelector('.logout-container');
+        const explicitLogout = logoutContainer.dataset.explicitLogout === 'true';
+
         // Sign out from Firebase and redirect to login page
         async function performLogout() {
             try {
-                // Sign out from Firebase
-                await auth.signOut();
-                console.log('Successfully signed out from Firebase');
+                // Sign out from Firebase if it's an explicit logout
+                if (explicitLogout) {
+                    await auth.signOut();
+                    console.log('Successfully signed out from Firebase');
+                }
                 
                 // Wait a moment to ensure Firebase has time to process the signout
                 setTimeout(() => {
                     // Redirect to login page with a success message
-                    window.location.href = '/login?message=logout_success';
+                    window.location.href = '/login?message=logout_success&logout=true';
                 }, 1000);
             } catch (error) {
                 console.error('Error signing out from Firebase:', error);
                 // Redirect to login page even if there's an error
-                window.location.href = '/login?message=logout_error';
+                window.location.href = '/login?message=logout_error&logout=true';
             }
         }
 
