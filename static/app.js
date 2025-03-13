@@ -478,7 +478,7 @@ function isWholeWordSubstring(lcs, str1, str2) {
     const validEnd1 = (endPos1 === str1.length || !/[a-zA-Z0-9]/.test(str1.charAt(endPos1)));
     const validEnd2 = (endPos2 === str2.length || !/[a-zA-Z0-9]/.test(str2.charAt(endPos2)));
 
-    // If all boundary checks pass, it's a whole word; otherwise, it’s not.
+    // If all boundary checks pass, it's a whole word; otherwise, it's not.
     return validStart1 && validEnd1 && validStart2 && validEnd2;
 }
 

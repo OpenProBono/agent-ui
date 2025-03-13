@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logging Out</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.png">
+    <style>
+        body {
+            font-family: 'DM Sans', Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .logout-container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .spinner-border {
+            margin: 20px auto;
+            display: block;
+        }
+        p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="logout-container">
+        <h2>Logging Out</h2>
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Please wait while we sign you out...</p>
+    </div>
+
+    <!-- Include Firebase App and Authentication compat libraries -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+    <script>
+        // Initialize Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDOT1aDiyrkv65Pjh2vm5K0Gi_WBOV1Jzw",
+            authDomain: "openprobono.firebaseapp.com",
+            projectId: "openprobono"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        // Sign out from Firebase and redirect to login page
+        async function performLogout() {
+            try {
+                // Sign out from Firebase
+                await auth.signOut();
+                console.log('Successfully signed out from Firebase');
+                
+                // Wait a moment to ensure Firebase has time to process the signout
+                setTimeout(() => {
+                    // Redirect to login page with a success message
+                    window.location.href = '/login?message=logout_success';
+                }, 1000);
+            } catch (error) {
+                console.error('Error signing out from Firebase:', error);
+                // Redirect to login page even if there's an error
+                window.location.href = '/login?message=logout_error';
+            }
+        }
+
+        // Execute logout when page loads
+        document.addEventListener('DOMContentLoaded', performLogout);
+    </script>
+</body>
+</html> 

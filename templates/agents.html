@@ -80,40 +80,53 @@
                     </tr>
                 </thead>
                 <tbody class="custom-table-striped">
-                    {% for agent in agents %}
-                    <tr>
-                        <td>{{ agent.name }}</td>
-                        <td class="id-col">{{ agent.id[:4] }}</td>
-                        <td class="created-on-col">{{ agent.created_on }}</td>
-                        <td class="tools-col">{{ agent.tools }}</td>
-                        <td class="action-col">
-                            <div class="btn-group" role="group">
-                                <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
-                                <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
-                                <a href="#" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal{{ agent.id }}">Delete</a>
-                            </div>
-                            
-                            <!-- Delete Confirmation Modal -->
-                            <div class="modal fade" id="deleteModal{{ agent.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ agent.id }}" aria-hidden="true">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title" id="deleteModalLabel{{ agent.id }}">Confirm Delete</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                        </div>
-                                        <div class="modal-body">
-                                            Are you sure you want to delete the agent "{{ agent.name }}"? This action cannot be undone.
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                            <a href="/delete-agent/{{ agent.id }}" class="btn btn-danger">Delete</a>
+                    {% if agents %}
+                        {% for agent in agents %}
+                        <tr>
+                            <td>{{ agent.name }}</td>
+                            <td class="id-col">{{ agent.id[:4] }}</td>
+                            <td class="created-on-col">{{ agent.created_on }}</td>
+                            <td class="tools-col">{{ agent.tools }}</td>
+                            <td class="action-col">
+                                <div class="btn-group" role="group">
+                                    <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
+                                    <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
+                                    <a href="#" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal{{ agent.id }}">Delete</a>
+                                </div>
+                                
+                                <!-- Delete Confirmation Modal -->
+                                <div class="modal fade" id="deleteModal{{ agent.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ agent.id }}" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="deleteModalLabel{{ agent.id }}">Confirm Delete</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                Are you sure you want to delete the agent "{{ agent.name }}"? This action cannot be undone.
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                <a href="/delete-agent/{{ agent.id }}" class="btn btn-danger">Delete</a>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <strong>You don't have any agents yet.</strong> 
+                                    <p class="mb-2 mt-2">Create your first agent by clicking the "Create Agent" button above.</p>
+                                    <a href="/create-agent" class="btn btn-primary mt-2">Create Agent</a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>
@@ -133,20 +146,32 @@
                     </tr>
                 </thead>
                 <tbody class="custom-table-striped">
-                    {% for agent in public_agents %}
-                    <tr>
-                        <td>{{ agent.name }}</td>
-                        <td class="id-col">{{ agent.id[:4] }}</td>
-                        <td class="created-on-col">{{ agent.created_on }}</td>
-                        <td class="tools-col">{{ agent.tools }}</td>
-                        <td class="action-col">
-                            <div class="btn-group" role="group">
-                                <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
-                                <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
+                    {% if public_agents %}
+                        {% for agent in public_agents %}
+                        <tr>
+                            <td>{{ agent.name }}</td>
+                            <td class="id-col">{{ agent.id[:4] }}</td>
+                            <td class="created-on-col">{{ agent.created_on }}</td>
+                            <td class="tools-col">{{ agent.tools }}</td>
+                            <td class="action-col">
+                                <div class="btn-group" role="group">
+                                    <a href="/agent/{{ agent.id }}" class="btn btn-success btn-sm">Chat</a>
+                                    <a href="/clone/{{ agent.id }}" class="btn btn-info btn-sm">Clone</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <strong>No public agents available.</strong>
+                                    <p class="mb-0 mt-2">Public agents will appear here when they become available.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>
