@@ -59,6 +59,8 @@
             <!-- Core Agent Configuration -->
             <div class="form-section">
                 <h2>Core Agent Configuration</h2>
+                <!-- Hidden input to store clone status for JavaScript -->
+                <input type="hidden" id="is_clone_mode" value="{{ 'true' if clone else 'false' }}">
                 <div class="form-group my-2">
                     <label for="bot_name">Agent Name</label>
                     <input type="text" class="form-control" id="bot_name" name="bot_name" value="{{ agent.name if clone else '' }}" 
@@ -191,10 +193,32 @@
                     
                     // Initialize model dropdown based on current engine selection
                     updateModelOptions();
+                    
+                    // Check if we're in clone mode using the hidden input
+                    const isCloneMode = document.getElementById('is_clone_mode').value === 'true';
+                    
+                    // Set default model to gpt-4o if available and not in clone mode
+                    if (!isCloneMode && availableModels['openai'] && availableModels['openai'].includes('gpt-4o')) {
+                        const modelSelect = document.getElementById('model');
+                        for (let i = 0; i < modelSelect.options.length; i++) {
+                            if (modelSelect.options[i].value === 'gpt-4o') {
+                                modelSelect.options[i].selected = true;
+                                break;
+                            }
+                        }
+                    }
                 }
                 
                 // Add event listeners to all search method selects
                 setupMethodSelectListeners();
+                
+                // Check if we're in clone mode using the hidden input
+                const isCloneMode = document.getElementById('is_clone_mode').value === 'true';
+                
+                // Add a default search tool with dynamic_serpapi if creating a new agent
+                if (!isCloneMode && document.getElementById('search-tools-container').children.length === 0) {
+                    addSearchToolField('web_search', 'dynamic_serpapi', '', 'Use this tool to search the web for current information.');
+                }
             } catch (error) {
                 console.error('Error fetching available models:', error);
             }
@@ -233,6 +257,7 @@
             const engineSelect = document.getElementById('engine');
             const modelSelect = document.getElementById('model');
             const selectedEngine = engineSelect.value;
+            const isCloneMode = document.getElementById('is_clone_mode').value === 'true';
             
             // Clear existing options
             modelSelect.innerHTML = '';
@@ -251,6 +276,11 @@
                     }
                     {% endif %}
                     
+                    // If not cloning and engine is openai, set gpt-4o as default
+                    if (!isCloneMode && selectedEngine === 'openai' && model === 'gpt-4o') {
+                        option.selected = true;
+                    }
+                    
                     modelSelect.appendChild(option);
                 });
             } else {
@@ -267,6 +297,11 @@
             const container = document.getElementById('search-tools-container');
             const div = document.createElement('div');
             div.classList.add('border', 'p-3', 'mb-3', 'rounded');
+            
+            // If no method is specified, default to dynamic_serpapi (web search)
+            if (!method) {
+                method = 'dynamic_serpapi';
+            }
             
             // Generate options HTML for search methods
             let optionsHtml = '';
@@ -328,7 +363,7 @@
         }
 
         // Attach event listeners to the Add button
-        document.getElementById('add-search-tool-btn').addEventListener('click', () => addSearchToolField('', '', '', ''));
+        document.getElementById('add-search-tool-btn').addEventListener('click', () => addSearchToolField('web_search', 'dynamic_serpapi', '', 'Use this tool to search the web for current information.'));
     </script>
 </body>
 </html>
