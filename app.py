@@ -3,6 +3,7 @@ import os
 import time
 from json import dumps, loads
 from typing import List
+from functools import wraps
 
 import requests
 from flask import (
@@ -15,6 +16,8 @@ from flask import (
     render_template,
     request,
     session,
+    url_for,
+    make_response,
 )
 
 from app_helper import (
@@ -29,6 +32,9 @@ from app_helper import (
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
+# Set session cookie to be secure in production and expire after 12 hours
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+app.config['PERMANENT_SESSION_LIFETIME'] = datetime.timedelta(hours=12)
 
 # Dictionary of search methods with display names and descriptions
 SEARCH_METHODS = {
@@ -46,29 +52,109 @@ SEARCH_METHODS = {
     }
 }
 
-@app.route("/")
-@app.route("/dashboard")
-def index():
-    # Example data
-    agents = [
-        {"id": 1, "name": "default_bot"},
-        {"id": 2, "name": "default_anthropic"},
-        {"id": 3, "name": "manual_sources_case_search"},
-    ]
-    metrics = {
-        "agents_created": len(agents),
-        "messages_with_agents": 150,
-        "searches_completed": 45,
-        "file_storage_used": "2 GB",
-    }
-    id_token = session.get("id_token")
-    user = {
-        "email": session.get("email"),
-        "firebase_uid": session.get("firebase_uid")
-    }
-    if(not id_token):
-        return redirect("/signup")
-    return render_template("index.html", agents=agents, metrics=metrics, user=user)
+# Routes that don't require authentication
+PUBLIC_ROUTES = [
+    'static',
+    'login',
+    'login_page',
+    'signup',
+    'logout'
+]
+
+@app.before_request
+def check_auth():
+    """
+    Middleware to check if user is authenticated before processing requests.
+    Redirects to login page if not authenticated and not accessing a public route.
+    """
+    # Skip authentication check for public routes
+    if request.endpoint in PUBLIC_ROUTES:
+        return
+        
+    # Check if user is authenticated
+    if not session.get('id_token'):
+        # If AJAX request, return 401 Unauthorized
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'status': 'error', 'message': 'Authentication required'}), 401
+        # Otherwise redirect to login page
+        return redirect(url_for('login_page'))
+
+# Authentication decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        id_token = session.get("id_token")
+        
+        if not id_token:
+            # User is not logged in, redirect to login page
+            return redirect(url_for('login_page'))
+        
+        # Check if token needs refresh
+        if should_refresh_token():
+            try:
+                # Try to refresh the token
+                refreshed = refresh_token()
+                if not refreshed:
+                    # If refresh failed, redirect to login
+                    flash("Your session has expired. Please log in again.", "warning")
+                    return redirect(url_for('login_page'))
+            except Exception as e:
+                logger.exception("Token refresh failed")
+                flash("Authentication error. Please log in again.", "error")
+                return redirect(url_for('login_page'))
+                
+        return f(*args, **kwargs)
+    return decorated_function
+
+def should_refresh_token():
+    """
+    Check if the token needs to be refreshed based on expiration time.
+    Uses a timestamp-based approach to avoid decoding JWT on every request.
+    """
+    token_timestamp = session.get("token_timestamp", 0)
+    # Firebase ID tokens expire after 1 hour, refresh if older than 55 minutes
+    return (time.time() - token_timestamp) > (55 * 60)
+
+def refresh_token():
+    """
+    Refresh the Firebase authentication token using the refresh token.
+    Returns True if successful, False otherwise.
+    """
+    refresh_token_value = session.get("refresh_token")
+    if not refresh_token_value:
+        logger.warning("No refresh token available in session")
+        return False
+    
+    try:
+        # Use Firebase Auth REST API to refresh the token
+        firebase_api_key = os.environ.get("FIREBASE_API_KEY")
+        if not firebase_api_key:
+            logger.error("FIREBASE_API_KEY environment variable not set")
+            return False
+            
+        refresh_url = f"https://securetoken.googleapis.com/v1/token?key={firebase_api_key}"
+        refresh_payload = {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token_value
+        }
+        
+        response = requests.post(refresh_url, json=refresh_payload)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            if "id_token" in response_data:
+                # Update session with new tokens
+                session["id_token"] = response_data["id_token"]
+                session["refresh_token"] = response_data.get("refresh_token", refresh_token_value)
+                session["token_timestamp"] = time.time()
+                logger.info("Successfully refreshed Firebase token")
+                return True
+                
+        logger.warning(f"Failed to refresh token: {response.status_code} - {response.text}")
+        return False
+    except Exception:
+        logger.exception("Token refresh request failed")
+        return False
 
 def fetch_sessions_api(user, id_token) -> List[dict]:
     sessions = []
@@ -86,26 +172,57 @@ def fetch_sessions_api(user, id_token) -> List[dict]:
 @app.route("/signup")
 def signup():
     logger.info("Signup endpoint called.")
+    # If user is already logged in, redirect to dashboard
+    if session.get("id_token"):
+        return redirect(url_for("agents"))
     return render_template("signup.html")
 
+@app.route("/login", methods=["GET"])
+def login_page():
+    logger.info("Login page endpoint called.")
+    # If user is already logged in, redirect to dashboard
+    if session.get("id_token"):
+        return redirect(url_for("agents"))
+    return render_template("signup.html")
 
 @app.route("/login", methods=["POST"])
 def login():
     logger.info("Login endpoint called.")
-    session["email"] = request.json.get("email")
-    session["firebase_uid"] = request.json.get("firebase_uid")
-    session["id_token"] = request.json.get("idToken")
-    return redirect("/")
-
+    try:
+        # Get authentication data from request
+        data = request.get_json()
+        if not data:
+            logger.error("No JSON data in login request")
+            return jsonify({"status": "error", "message": "Invalid request format"}), 400
+            
+        # Store user information in session
+        session["email"] = data.get("email")
+        session["firebase_uid"] = data.get("firebase_uid")
+        session["id_token"] = data.get("idToken")
+        session["refresh_token"] = data.get("refreshToken")
+        session["token_timestamp"] = time.time()
+        session.permanent = True  # Use the permanent session lifetime we configured
+        
+        logger.info(f"User logged in: {session['email']}")
+        # Return success response
+        return jsonify({"status": "success", "redirect": url_for("agents")})
+    except Exception as e:
+        logger.exception("Login error")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route("/logout")
 def logout():
     logger.info("Logout endpoint called.")
+    # Clear all session data
     session.clear()
-    return redirect("/")
+    # Return a page with JavaScript to sign out from Firebase
+    return render_template("logout.html")
 
-
+@app.route("/")
+@app.route("/index")
+@app.route("/dashboard")
 @app.route("/agents")
+@login_required
 def agents():
     logger.info("Agents endpoint called.")
 
@@ -116,106 +233,96 @@ def agents():
     agents = []
     public_agents = []
 
-    # If user is authenticated, fetch real agent data
-    if id_token:
-        try:
-            # Fetch user's bots
-            with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
-                if r.status_code == 200:
-                    response_data = r.json()
-                    if response_data.get("message") == "Success" and "data" in response_data:
-                        # Transform the API response to match the expected format for the template
-                        for bot_id, bot in response_data["data"].items():
-                            # Count total tools (search_tools + vdb_tools)
-                            search_tools = bot.get("search_tools", [])
-                            vdb_tools = bot.get("vdb_tools", [])
-                            total_tools = len(search_tools) + len(vdb_tools)
+    try:
+        # Fetch user's bots
+        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "data" in response_data:
+                    # Transform the API response to match the expected format for the template
+                    for bot_id, bot in response_data["data"].items():
+                        # Count total tools (search_tools + vdb_tools)
+                        search_tools = bot.get("search_tools", [])
+                        vdb_tools = bot.get("vdb_tools", [])
+                        total_tools = len(search_tools) + len(vdb_tools)
 
-                            # Format the created_on date
-                            created_on = datetime.datetime.now()
-                            if "timestamp" in bot and bot["timestamp"]:
-                                try:
-                                    if isinstance(bot["timestamp"], dict) and "seconds" in bot["timestamp"]:
-                                        created_on = datetime.datetime.fromtimestamp(bot["timestamp"]["seconds"])
-                                    else:
-                                        created_on = datetime.datetime.fromisoformat(str(bot["timestamp"]))
-                                except (ValueError, TypeError):
-                                    pass
+                        # Format the created_on date
+                        created_on = datetime.datetime.now()
+                        if "timestamp" in bot and bot["timestamp"]:
+                            try:
+                                if isinstance(bot["timestamp"], dict) and "seconds" in bot["timestamp"]:
+                                    created_on = datetime.datetime.fromtimestamp(bot["timestamp"]["seconds"])
+                                else:
+                                    created_on = datetime.datetime.fromisoformat(str(bot["timestamp"]))
+                            except (ValueError, TypeError):
+                                pass
 
-                            # Store the raw timestamp for client-side formatting
-                            agent = {
-                                "id": bot_id,
-                                "name": bot.get("name", "Untitled Bot"),
-                                "created_on": created_on.isoformat(),
-                                "tools": total_tools,
-                            }
-                            agents.append(agent)
-                else:
-                    logger.error(f"Failed to fetch agents: {r.status_code} - {r.text}")
-            
-            # Fetch public bots
-            with api_request("view_public_bots", method="POST", data={"user": user}, id_token=id_token) as r:
-                if r.status_code == 200:
-                    response_data = r.json()
-                    if response_data.get("message") == "Success" and "data" in response_data:
-                        # Transform the API response to match the expected format for the template
-                        for bot_id, bot in response_data["data"].items():
-                            # Skip if this bot is already in the user's personal bots
-                            if any(a["id"] == bot_id for a in agents):
-                                continue
-                                
-                            # Count total tools (search_tools + vdb_tools)
-                            search_tools = bot.get("search_tools", [])
-                            vdb_tools = bot.get("vdb_tools", [])
-                            total_tools = len(search_tools) + len(vdb_tools)
+                        # Store the raw timestamp for client-side formatting
+                        agent = {
+                            "id": bot_id,
+                            "name": bot.get("name", "Untitled Bot"),
+                            "created_on": created_on.isoformat(),
+                            "tools": total_tools,
+                        }
+                        agents.append(agent)
+            else:
+                logger.error(f"Failed to fetch agents: {r.status_code} - {r.text}")
+        
+        # Fetch public bots
+        with api_request("view_public_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "data" in response_data:
+                    # Transform the API response to match the expected format for the template
+                    for bot_id, bot in response_data["data"].items():
+                        # Skip if this bot is already in the user's personal bots
+                        if any(a["id"] == bot_id for a in agents):
+                            continue
+                            
+                        # Count total tools (search_tools + vdb_tools)
+                        search_tools = bot.get("search_tools", [])
+                        vdb_tools = bot.get("vdb_tools", [])
+                        total_tools = len(search_tools) + len(vdb_tools)
 
-                            # Format the created_on date
-                            created_on = datetime.datetime.now()
-                            if "timestamp" in bot and bot["timestamp"]:
-                                try:
-                                    if isinstance(bot["timestamp"], dict) and "seconds" in bot["timestamp"]:
-                                        created_on = datetime.datetime.fromtimestamp(bot["timestamp"]["seconds"])
-                                    else:
-                                        created_on = datetime.datetime.fromisoformat(str(bot["timestamp"]))
-                                except (ValueError, TypeError):
-                                    pass
+                        # Format the created_on date
+                        created_on = datetime.datetime.now()
+                        if "timestamp" in bot and bot["timestamp"]:
+                            try:
+                                if isinstance(bot["timestamp"], dict) and "seconds" in bot["timestamp"]:
+                                    created_on = datetime.datetime.fromtimestamp(bot["timestamp"]["seconds"])
+                                else:
+                                    created_on = datetime.datetime.fromisoformat(str(bot["timestamp"]))
+                            except (ValueError, TypeError):
+                                pass
 
-                            # Store the raw timestamp for client-side formatting
-                            agent = {
-                                "id": bot_id,
-                                "name": bot.get("name", "Untitled Bot"),
-                                "created_on": created_on.isoformat(),
-                                "tools": total_tools,
-                            }
-                            public_agents.append(agent)
-                else:
-                    logger.error(f"Failed to fetch public agents: {r.status_code} - {r.text}")
-        except Exception as e:
-            logger.exception(f"Error fetching agents: {str(e)}")
+                        # Store the raw timestamp for client-side formatting
+                        agent = {
+                            "id": bot_id,
+                            "name": bot.get("name", "Untitled Bot"),
+                            "created_on": created_on.isoformat(),
+                            "tools": total_tools,
+                        }
+                        public_agents.append(agent)
+            else:
+                logger.error(f"Failed to fetch public agents: {r.status_code} - {r.text}")
+    except Exception as e:
+        logger.exception(f"Error fetching agents: {str(e)}")
 
     # If no agents were fetched (either due to error or user not authenticated),
     # provide example data for display purposes
     if not agents:
-        logger.warning("Using example agent data as no real data was fetched.")
-        current_time = datetime.datetime.now().isoformat()
-        agents = [
-            {"id": "abc123", "name": "default_bot", "created_on": current_time, "tools": 2},
-            {"id": "def456", "name": "default_anthropic", "created_on": current_time, "tools": 1},
-            {"id": "ghi789", "name": "manual_sources_case_search", "created_on": current_time, "tools": 4},
-        ]
+        logger.warning("No agents found for user.")
+        # Empty list will be passed to template
     
     if not public_agents:
-        logger.warning("Using example public agent data as no real data was fetched.")
-        current_time = datetime.datetime.now().isoformat()
-        public_agents = [
-            {"id": "pub123", "name": "Public Legal Assistant", "created_on": current_time, "tools": 3},
-            {"id": "pub456", "name": "Public Research Bot", "created_on": current_time, "tools": 2},
-        ]
+        logger.warning("No public agents found.")
+        # Empty list will be passed to template
 
     return render_template("agents.html", agents=agents, public_agents=public_agents, user=user)
 
 
 @app.route("/resources")
+@login_required
 def resources():
     logger.info("Resources endpoint called.")
     # Example data
@@ -238,13 +345,12 @@ def resources():
 @app.route("/agent/<agent>", methods=["GET"])
 @app.route("/agent/<agent>/", methods=["GET"])
 @app.route("/agent/<agent>/session/<session_id>", methods=["GET"])
+@login_required
 def chatbot(agent, session_id=None):
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     data = {"bot_id": agent, "user": user}
     logger.info("Fetching agent info for ID %s", agent)
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
 
     try:
         with api_request("view_bot", method="POST", id_token=id_token, params=data) as r:
@@ -253,7 +359,7 @@ def chatbot(agent, session_id=None):
     except Exception:
         logger.exception("Fetch agent info failed.")
         return jsonify({"error": "Failed to load agent."}), 400
-    logger.debug("Fetched agent info: %s", result)
+    logger.info("Fetched agent info: %s", result)
     if result["data"] is None:
         logger.error("Fetch agent info received an unexpected response.")
         abort(404)
@@ -268,7 +374,8 @@ def chatbot(agent, session_id=None):
     if "vdb_tools" in result["data"]:
         vdb_tools = result["data"]["vdb_tools"]
     # Use the actual name from the API response if available, otherwise derive from agent ID
-    name = result["data"].get("name") if result["data"].get("name") else " ".join(word.capitalize() for word in agent.split("_"))
+    name = result["data"].get("name") if result["data"].get("name") else None
+    logger.info("Agent name: %s", name)
     return render_template(
         "chatbot.html",
         engine=engine,
@@ -281,6 +388,7 @@ def chatbot(agent, session_id=None):
 
 @app.route("/users", methods=["GET"])
 @app.route("/users/", methods=["GET"])
+@login_required
 def users():
     logger.info("Users endpoint called.")
     example_data = [{
@@ -303,12 +411,11 @@ def users():
 
 
 @app.route("/chat", methods=["GET", "POST"])
+@login_required
 def chat():
     logger.info("Chat endpoint called.")
     id_token = session.get("id_token")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
-    if not id_token:
-        return redirect("/signup")
 
     if request.method == "POST":
         # Get the message and files from the request
@@ -369,12 +476,11 @@ def chat():
 
 
 @app.route("/agent/<agent>/new_session", methods=["GET"])
+@login_required
 def new_session(agent):
     logger.info("Starting new session for agent ID %s", agent)
     id_token = session.get("id_token")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
-    if not id_token:
-        return redirect("/signup")
     try:
         with api_request("initialize_session", id_token=id_token, data={"bot_id": agent, "user": user}) as r:
             r.raise_for_status()
@@ -385,12 +491,11 @@ def new_session(agent):
 
 
 @app.route("/agent/<agent>/info", methods=["GET"])
+@login_required
 def agent_info(agent):
     data = {"bot_id": agent}
     logger.info("Agent info endpoint called for ID %s", agent)
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
 
     try:
         with api_request("view_bot", id_token=id_token, params=data, method="POST") as r:
@@ -402,21 +507,20 @@ def agent_info(agent):
     if result["data"] is None:
         logger.error("Agent info endpoint got an unexpected response.")
         abort(404)
-    logger.debug("Agent endpoint info got response: %s", result)
+    # logger.debug("Agent endpoint info got response: %s", result)
     return jsonify(result)
 
 
 @app.route("/sessions", methods=["GET"])
+@login_required
 def get_sessions():
     try:
         logger.info("Sessions endpoint called.")
         id_token = session.get("id_token")
-        if not id_token:
-            return redirect("/signup")
         
         user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
         sessions = fetch_sessions_api(user, id_token)
-        logger.info("Sessions endpoint got responses: %s", sessions)
+        # logger.info("Sessions endpoint got responses: %s", sessions)
         return jsonify(sessions)
     except Exception:
         logger.exception("Sessions endpoint got an unexpected response.")
@@ -424,15 +528,13 @@ def get_sessions():
 
 
 @app.route("/sessions-page", methods=["GET"])
+@login_required
 def sessions_page():
     """Page to view all the user's previous chat sessions with filtering capability."""
     logger.info("Sessions page endpoint called.")
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
-
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
 
     # Get all available bots for filtering options
@@ -453,11 +555,10 @@ def sessions_page():
 
 
 @app.route("/get_session_messages/<session_id>", methods=["GET"])
+@login_required
 def get_session_messages(session_id):
     logger.info("Session messages endpoint called for session ID %s", session_id)
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
 
     try:
         user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
@@ -465,7 +566,7 @@ def get_session_messages(session_id):
         with api_request("fetch_session_formatted_history", id_token=id_token, data=data) as r:
             r.raise_for_status()
             session_data = r.json()
-            logger.debug("Session messages endpoint got response: %s", session_data)
+            # logger.debug("Session messages endpoint got response: %s", session_data)
             return jsonify(session_data)
     except Exception:
         logger.exception("Session messages endpoint got an unexpected response.")
@@ -473,11 +574,10 @@ def get_session_messages(session_id):
 
 
 @app.route("/status", methods=["GET"])
+@login_required
 def get_status():
     logger.info("Status endpoint called.")
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     try:
         with api_request("", method="GET", id_token=id_token, timeout=5) as r:
             r.raise_for_status()
@@ -492,11 +592,10 @@ def get_status():
 
 
 @app.route("/available_models", methods=["GET"])
+@login_required
 def get_available_models():
     logger.info("Available models endpoint called")
     id_token = session.get("id_token")
-    if not id_token:
-        return jsonify({"message": "Error", "data": {}})
 
     try:
         with api_request("available_models", method="GET", id_token=id_token) as r:
@@ -508,11 +607,10 @@ def get_available_models():
 
 
 @app.route("/feedback", methods=["POST"])
+@login_required
 def feedback():
     logger.info("Feedback endpoint called.")
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
 
     feedback_data = loads(request.form.get("data"))
     feedback_index = request.form.get("index")
@@ -543,13 +641,12 @@ def feedback():
 
 
 @app.route("/search/<collection>", methods=["GET"])
+@login_required
 def search(collection):
     start = time.time()
     id_token = session.get("id_token")
     email = session.get("email")
     uid = session.get("firebase_uid")
-    if not (id_token and email and uid):
-        return redirect("/signup")
     user = {"email": email, "firebase_uid": uid}
     if not collection:
         abort(404)
@@ -604,13 +701,12 @@ def search(collection):
     )
 
 @app.route("/manage/<collection>", methods=["GET"])
+@login_required
 def manage(collection):
     start = time.time()
     if not collection:
         abort(404)
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     source = request.args.get("source")
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist("jurisdictions")
@@ -668,11 +764,10 @@ def manage(collection):
     )
 
 @app.route("/resource_count/<collection_name>")
+@login_required
 def get_resource_count(collection_name) -> int:
     logger.info("Getting resource count for collection %s.", collection_name)
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     try:
         with api_request(f"resource_count/{collection_name}", method="GET", id_token=id_token, timeout=45) as r:
             r.raise_for_status()
@@ -686,11 +781,10 @@ def get_resource_count(collection_name) -> int:
 
 
 @app.route("/summary/<resource_id>")
+@login_required
 def fetch_summary(resource_id):
     logger.info("Fetching summary for %s.", resource_id)
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     params = {"resource_id": resource_id}
     try:
         with api_request("summary", method="GET", id_token=id_token, params=params, timeout=30) as r:
@@ -706,11 +800,10 @@ def fetch_summary(resource_id):
 
 
 @app.route("/create-agent", methods=["GET", "POST"])
+@login_required
 def create_agent():
     logger.info("Create agent endpoint called.")
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     if request.method == "GET":
         return render_template("create_agent.html", user=user, search_methods=SEARCH_METHODS)
@@ -768,12 +861,11 @@ def create_agent():
 
 
 @app.route("/clone/<agent>", methods=["GET"])
+@login_required
 def clone_agent(agent):
     logger.info("Cloning agent: %s", agent)
     data = {"bot_id": agent}
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
 
     logger.info("Fetching agent info for ID %s", agent)
     try:
@@ -827,14 +919,12 @@ def clone_agent(agent):
 
 
 @app.route("/delete-agent/<agent_id>", methods=["GET"])
+@login_required
 def delete_agent(agent_id):
     logger.info("Delete agent endpoint called for agent ID: %s", agent_id)
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        logger.warning("User not authenticated, redirecting to signup")
-        return redirect("/signup")
 
     try:
         # Call the delete_bot/{bot_id} endpoint
@@ -870,15 +960,14 @@ def delete_agent(agent_id):
 
 
 @app.route("/export_sessions", methods=["POST"])
+@login_required
 def export_sessions():
     """Export multiple sessions with their full data including messages."""
     logger.info("Export sessions endpoint called.")
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return jsonify({"error": "Authentication required"}), 401
-
+    
     # Get user info
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
 
@@ -969,15 +1058,14 @@ def export_sessions():
         return jsonify({"error": "Failed to export sessions"}), 500
 
 @app.route("/eval-datasets", methods=["GET"])
+@login_required
 def eval_datasets():
     """Page to view all evaluation datasets."""
     logger.info("Eval datasets endpoint called.")
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
-
+    
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
 
     # Fetch all evaluation datasets for this user
@@ -996,15 +1084,14 @@ def eval_datasets():
 
 
 @app.route("/create-eval-dataset", methods=["GET", "POST"])
+@login_required
 def create_eval_dataset():
     """Page to create a new evaluation dataset."""
     logger.info("Create eval dataset endpoint called.")
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
-
+    
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
 
     if request.method == "GET":
@@ -1066,15 +1153,14 @@ def create_eval_dataset():
 
 
 @app.route("/eval-dataset/<dataset_id>", methods=["GET"])
+@login_required
 def view_eval_dataset(dataset_id):
     """Page to view a specific evaluation dataset and compare outputs."""
     logger.info(f"View eval dataset endpoint called for dataset ID: {dataset_id}")
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
-
+    
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
 
     # Fetch the dataset details
@@ -1116,15 +1202,14 @@ def view_eval_dataset(dataset_id):
     return redirect("/eval-datasets")
 
 @app.route("/clone-eval-dataset/<dataset_id>", methods=["GET"])
+@login_required
 def clone_eval_dataset(dataset_id):
     """Clone an existing evaluation dataset."""
     logger.info("Cloning evaluation dataset: %s", dataset_id)
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
-
+    
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
 
     logger.info("Fetching dataset info for ID %s", dataset_id)
@@ -1166,14 +1251,13 @@ def clone_eval_dataset(dataset_id):
     return render_template("create_eval_dataset.html", user=user, bots=bots, dataset=dataset)
 
 @app.route("/new-label-eval-dataset/<dataset_id>", methods=["GET"])
+@login_required
 def new_label_eval_dataset(dataset_id):
     """Page to configure and create a labeled dataset."""
     logger.info(f"New label eval dataset endpoint called for dataset ID: {dataset_id}")
     
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     
     user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     
@@ -1182,14 +1266,13 @@ def new_label_eval_dataset(dataset_id):
 
 # Add a new route to handle the form submission from new_label_eval_pop.html
 @app.route("/create-labeled-dataset/<dataset_id>", methods=["POST"])
+@login_required
 def create_labeled_dataset(dataset_id):
     """Create a labeled dataset with multiple aspects."""
     logger.info(f"Create labeled dataset endpoint called for dataset ID: {dataset_id}")
     
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     
     # Get form data
     dataset_name = request.form.get('dataset_name')
@@ -1294,14 +1377,13 @@ def create_labeled_dataset(dataset_id):
         return redirect(f"/new-label-eval-dataset/{dataset_id}")
 
 @app.route("/labeled-eval-datasets", methods=["GET"])
+@login_required
 def labeled_eval_datasets():
     """Page to view all labeled evaluation datasets."""
     logger.info("Labeled eval datasets endpoint called")
     
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     
     user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     
@@ -1325,14 +1407,13 @@ def labeled_eval_datasets():
     return render_template("labeled_eval_datasets.html", user=user, labeled_datasets={})
 
 @app.route("/label-eval-dataset/<dataset_id>", methods=["GET"])
+@login_required
 def label_eval_dataset(dataset_id):
     """Page to label or edit labels for an evaluation dataset."""
     logger.info(f"Label eval dataset endpoint called for dataset ID: {dataset_id}")
     
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return redirect("/signup")
     
     user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     
@@ -1377,14 +1458,13 @@ def label_eval_dataset(dataset_id):
     return redirect("/labeled-eval-datasets")
 
 @app.route("/update-labeled-session/<dataset_id>", methods=["POST"])
+@login_required
 def update_labeled_session_endpoint(dataset_id):
     """Update a single labeled session in an evaluation dataset."""
     logger.info(f"Update labeled session endpoint called for dataset ID: {dataset_id}")
     
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return jsonify({"success": False, "message": "Not authenticated"}), 401
     
     user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     
@@ -1481,14 +1561,13 @@ def update_labeled_session_endpoint(dataset_id):
         return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
 
 @app.route("/input_generator", methods=["POST"])
+@login_required
 def input_generator():
     """Generate inputs using AI based on a prompt."""
     logger.info("Input generator endpoint called.")
     
     # Get the user's ID token from the session
     id_token = session.get("id_token")
-    if not id_token:
-        return jsonify({"message": "Not authenticated"}), 401
     
     user = {'firebase_uid': session.get("firebase_uid"), "email": session.get("email")}
     
