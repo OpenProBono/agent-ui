@@ -299,7 +299,7 @@
             const deselectAllLink = document.getElementById('deselectAll');
             
             // Initialize bot data from server
-            const botsData = JSON.parse('{{ bots|tojson }}');
+            const botsData = {{ bots|tojson|safe }};
             const bots = {};
             
             // Create a map of bot colors to ensure uniqueness
@@ -351,7 +351,7 @@
                     '#95a5a6'  // Light Gray
                 ];
                 
-                // Ensure botId is a string
+                // Ensure botId is a string and handle null/undefined
                 const idString = String(botId || '').trim();
                 
                 if (!idString) {
@@ -402,7 +402,11 @@
             });
             
             // Create unique bot IDs for filtering
-            const uniqueBotIds = [...new Set(Array.from(sessionItems).map(item => item.dataset.botId))];
+            const uniqueBotIds = [...new Set(Array.from(sessionItems).map(item => item.dataset.botId).filter(id => id))];
+            
+            // Limit the number of bot filter badges to prevent UI issues
+            const maxBotBadges = 20; // Reasonable limit for UI
+            const displayBotIds = uniqueBotIds.slice(0, maxBotBadges);
             
             // Create "All" badge
             const allBadge = document.createElement('span');
@@ -414,8 +418,8 @@
             allBadge.addEventListener('click', () => toggleBotFilter('all'));
             botFilterBadges.appendChild(allBadge);
             
-            // Create badges for each bot
-            uniqueBotIds.forEach(botId => {
+            // Create badges for each bot (limited to maxBotBadges)
+            displayBotIds.forEach(botId => {
                 if (!botId) return; // Skip if botId is empty
                 
                 const badge = document.createElement('span');
@@ -441,6 +445,14 @@
                 badge.addEventListener('click', () => toggleBotFilter(botId));
                 botFilterBadges.appendChild(badge);
             });
+            
+            // Add a message if we limited the number of bot badges
+            if (uniqueBotIds.length > maxBotBadges) {
+                const limitMessage = document.createElement('div');
+                limitMessage.className = 'filter-info mt-2';
+                limitMessage.textContent = `Showing ${maxBotBadges} of ${uniqueBotIds.length} agents. Use search to find specific sessions.`;
+                botFilterBadges.parentNode.appendChild(limitMessage);
+            }
             
             // Keep track of active bot filters
             const activeBotFilters = new Set(['all']);
@@ -565,22 +577,32 @@
             
             // Get contrasting text color (black or white) based on background color
             function getContrastColor(hexColor) {
-                // Convert hex to RGB
-                let r, g, b;
-                if (hexColor.startsWith('#')) {
-                    const hex = hexColor.substring(1);
-                    r = parseInt(hex.substring(0, 2), 16);
-                    g = parseInt(hex.substring(2, 4), 16);
-                    b = parseInt(hex.substring(4, 6), 16);
-                } else {
-                    return '#242424'; // Default to dark text
+                // Default to dark text if color is invalid
+                if (!hexColor || typeof hexColor !== 'string' || !hexColor.startsWith('#')) {
+                    return '#242424';
                 }
                 
-                // Calculate luminance
-                const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-                
-                // Return black for bright colors, white for dark colors
-                return luminance > 0.5 ? '#242424' : '#ffffff';
+                try {
+                    // Convert hex to RGB
+                    const hex = hexColor.substring(1);
+                    const r = parseInt(hex.substring(0, 2), 16);
+                    const g = parseInt(hex.substring(2, 4), 16);
+                    const b = parseInt(hex.substring(4, 6), 16);
+                    
+                    // Check if any RGB values are NaN (invalid hex)
+                    if (isNaN(r) || isNaN(g) || isNaN(b)) {
+                        return '#242424'; // Default to dark text
+                    }
+                    
+                    // Calculate luminance
+                    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                    
+                    // Return black for bright colors, white for dark colors
+                    return luminance > 0.5 ? '#242424' : '#ffffff';
+                } catch (e) {
+                    console.error('Error calculating contrast color:', e);
+                    return '#242424'; // Default to dark text
+                }
             }
             
             // Session selection functionality
