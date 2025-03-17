@@ -90,7 +90,7 @@
                     <!-- Dynamic Search Tool fields will be added here -->
                     {% if clone %}
                     {% for tool in agent.search_tools %}
-                    <div class="border p-3 mb-3 rounded">
+                    <div class="border p-3 mb-3 rounded search-tool">
                         <div class="d-flex justify-content-between align-items-center">
                             <h5>Search Tool {{ loop.index }}</h5>
                             <button type="button" class="btn btn-danger btn-sm remove-search-tool">Remove</button>
@@ -211,6 +211,11 @@
                 
                 // Add event listeners to all search method selects
                 setupMethodSelectListeners();
+                // Add event listeners to all remove search tool buttons
+                document.querySelectorAll('.search-tool').forEach(function(div) {
+                    const button = div.querySelector('.remove-search-tool');
+                    button.addEventListener('click', () => removeSearchToolField(div));
+                });
                 
                 // Check if we're in clone mode using the hidden input
                 const isCloneMode = document.getElementById('is_clone_mode').value === 'true';
@@ -338,10 +343,7 @@
                 </div>
             `;
             // Attach event listener for the remove button
-            div.querySelector('.remove-search-tool').addEventListener('click', function() {
-                div.remove();
-                reIndexSearchToolFields();
-            });
+            div.querySelector('.remove-search-tool').addEventListener('click', () => removeSearchToolField(div));
             
             // Attach event listener for the method select
             const methodSelect = div.querySelector('.search-method-select');
@@ -351,6 +353,11 @@
             }
             
             container.appendChild(div);
+            reIndexSearchToolFields();
+        }
+
+        function removeSearchToolField(div) {
+            div.remove();
             reIndexSearchToolFields();
         }
 

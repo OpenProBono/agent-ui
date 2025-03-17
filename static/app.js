@@ -141,7 +141,7 @@ async function sendFeedback(type) {
             }
         }
     } catch (error) {
-        console.error('Failed to create new session:', error);
+        console.error('Failed to send feedback:', error);
     }
 
     const modalId = type === 'like' ? '#likeModal' : '#dislikeModal';
@@ -792,6 +792,7 @@ function generateSourceHTML(source, index, entities) {
                         break;
                     case '015unamimous':
                     case '015unaminous':
+                    case '015unanimous':
                         opinionType = "Unanimous";
                         break;
                     case '020lead':
@@ -1330,6 +1331,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         }
     } catch (error) {
+        console.error('Error checking server status:', error);
         statusMsg.innerHTML = "Agents are currently unavailable. Please try again later.";
         return;
     }
