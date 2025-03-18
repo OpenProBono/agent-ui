@@ -65,6 +65,21 @@ JURISDICTIONS = [
     {"display": "Wyoming", "value": "wy"},
 ]
 
+# Dictionary of search methods with display names and descriptions
+SEARCH_METHODS = {
+    "dynamic_serpapi": {
+        "display_name": "Dynamic Web Search (SerpAPI)",
+        "description": "Uses SerpAPI to perform dynamic web searches with customizable parameters."
+    },
+    "courtlistener": {
+        "display_name": "CourtListener",
+        "description": "Specialized search for legal cases and court documents in the US using CourtListener."
+    },
+    "bailii": {
+        "display_name": "BAILII",
+        "description": "Specialized search for legal cases and court documents in the UK using BAILII."
+    },
+}
 
 formatter = logging.Formatter("%(asctime)s %(levelname)s %(funcName)s %(message)s")
 handler = logging.StreamHandler()
@@ -73,7 +88,7 @@ logger = logging.getLogger("logger")
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 
-api_url = os.environ["OPB_API_URL"]
+api_url = "http://0.0.0.0:8080" # os.environ["OPB_API_URL"]
 
 def api_request(
     endpoint,
