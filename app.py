@@ -24,6 +24,7 @@ from app_helper import (
     api_url,
     format_summary,
     generate_source_context,
+    get_collections,
     logger,
     organize_sources,
 )
@@ -246,21 +247,19 @@ def agents():
 @login_required
 def resources():
     logger.info("Resources endpoint called.")
-    # Example data
-    collections = [
-        {"name": "search_collection_vj1", "created_on": datetime.date.today(), "resource_count": 10000},
-        {"name": "courtlistener", "created_on": datetime.date.today(), "resource_count": 1000000},
-        {"name": "search_collection_gemini", "created_on": datetime.date.today(), "resource_count": 10000},
-    ]
-    resources = [
-        {"name": "helpguide.pdf", "added_on": datetime.date.today(), "collection_count": 2},
-        {"name": "www.google.com", "added_on": datetime.date.today(), "collection_count": 1},
-    ]
-    user = {
-        "email": session.get("email"),
-        "firebase_uid": session.get("firebase_uid")
-    }
-    return render_template("resources.html", collections=collections, resources=resources, user=user)
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    user_collections, public_collections = get_collections(id_token)
+
+    return render_template(
+        "resources.html",
+        user_collections=user_collections,
+        public_collections=public_collections,
+        user=user,
+    )
 
 
 @app.route("/agent/<agent>", methods=["GET"])
@@ -561,25 +560,53 @@ def feedback():
     return jsonify({"status": status})
 
 
-@app.route("/search/<collection>", methods=["GET"])
+@app.route("/search/<collection_id>", methods=["GET"])
 @login_required
-def search(collection):
+def search(collection_id: str):
     start = time.time()
     id_token = session.get("id_token")
+    if not collection_id:
+        abort(404)
+
+    # get collection data from API
+    endpoint = f"view_collection/{collection_id}"
+    try:
+        with api_request(endpoint, method="GET", id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        msg = f"Error getting collection info: {collection_id}"
+        logger.exception(msg)
+        flash(msg, "error")
+        return redirect(url_for("resources"))
+
+    if result["message"] != "Success":
+        logger.error("view_collection endpoint got error: %s", result)
+        flash(result["message"], "error")
+        return redirect(url_for("resources"))
+
+    display_name = result["data"]["name"]
+
+    # get args
+    semantic = request.args.get("semantic")
     email = session.get("email")
     uid = session.get("firebase_uid")
     user = {"email": email, "firebase_uid": uid}
-    if not collection:
-        abort(404)
-    semantic = request.args.get("semantic")
     if not semantic:
-        return render_template("search.html", collection=collection, jurisdictions=JURISDICTIONS, user=user)
+        return render_template(
+            "search.html",
+            collection=display_name,
+            collection_id=collection_id,
+            jurisdictions=JURISDICTIONS,
+            user=user,
+        )
+
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist("jurisdictions")
     after_date = request.args.get("after_date")
     before_date = request.args.get("before_date")
     data = {
-        "collection": collection,
+        "vdb_id": collection_id,
         "query": semantic,
         "k": 100,
         "user": user,
@@ -599,9 +626,11 @@ def search(collection):
     except Exception:
         logger.exception("Search endpoint fetch failed.")
         return jsonify({"error": "Failed to search collection."}), 400
+
     if result["results"] is None:
         logger.error("Search endpoint got an unexpected response.")
         return jsonify({"error": "Failed to search collection."}), 400
+
     results = result["results"]
     organized = organize_sources(results)
     sources = [
@@ -610,9 +639,10 @@ def search(collection):
     ]
     end = time.time()
     elapsed = str(round(end - start, 5))
+
     return render_template(
         "search.html",
-        collection=collection,
+        collection=display_name,
         results=sources,
         results_count=len(results),
         form_data=data,
@@ -621,13 +651,18 @@ def search(collection):
         user=user,
     )
 
-@app.route("/manage/<collection>", methods=["GET"])
+@app.route("/manage/<collection_id>", methods=["GET"])
 @login_required
-def manage(collection):
+def manage(collection_id: str):
     start = time.time()
-    if not collection:
+    if not collection_id:
         abort(404)
     id_token = session.get("id_token")
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid"),
+    }
+
     source = request.args.get("source")
     keyword = request.args.get("keyword")
     jurisdictions = request.args.getlist("jurisdictions")
@@ -636,11 +671,7 @@ def manage(collection):
     page = request.args.get("page", 1, int)
     per_page = request.args.get("per_page", 50, int)
     params = {"page": page, "per_page": per_page}
-    user = {
-        "email": session.get("email"),
-        "firebase_uid": session.get("firebase_uid")
-    }
-    data = {"collection": collection, "user": user}
+    data = {"vdb_id": collection_id}
     if keyword:
         data["keyword_query"] = keyword
     if jurisdictions and len(jurisdictions) != len(JURISDICTIONS):
@@ -651,6 +682,7 @@ def manage(collection):
         data["before_date"] = before_date
     if source:
         data["source"] = source
+
     try:
         with api_request("browse_collection", id_token=id_token, data=data, params=params) as r:
             r.raise_for_status()
@@ -658,10 +690,13 @@ def manage(collection):
     except Exception:
         logger.exception("Manage endpoint fetch failed.")
         return jsonify({"error": "Failed to manage collection."}), 400
+
     if result["results"] is None:
         logger.error("Manage endpoint got an unexpected response.")
         return jsonify({"error": "Failed to manage collection."}), 400
+
     results = result["results"]
+    display_name = result["collection_name"]
     organized = organize_sources(results)
     sources = [
         generate_source_context(s["source"], i, s["entities"], keyword=keyword)
@@ -672,7 +707,7 @@ def manage(collection):
 
     return render_template(
         "manage_collection.html",
-        collection=collection,
+        collection=display_name,
         results=sources,
         results_count=len(results),
         form_data=data,
@@ -684,13 +719,12 @@ def manage(collection):
         user=user,
     )
 
-@app.route("/resource_count/<collection_name>")
+@app.route("/resource_count/<collection_id>")
 @login_required
-def get_resource_count(collection_name) -> int:
-    logger.info("Getting resource count for collection %s.", collection_name)
+def get_resource_count(collection_id) -> int:
     id_token = session.get("id_token")
     try:
-        with api_request(f"resource_count/{collection_name}", method="GET", id_token=id_token, timeout=45) as r:
+        with api_request(f"resource_count/{collection_id}", method="GET", id_token=id_token, timeout=45) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -878,6 +912,83 @@ def delete_agent(agent_id):
 
     # Redirect back to the agents page
     return redirect("/agents")
+
+
+@app.route("/delete-collection/<collection_id>", methods=["GET"])
+@login_required
+def delete_collection(collection_id):
+    logger.info("Delete collection endpoint called for collection ID: %s", collection_id)
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    try:
+        # Call the delete_collection endpoint
+        endpoint = f"delete_collection/{collection_id}"
+        logger.info("Calling API endpoint: %s", endpoint)
+
+        with api_request(endpoint, method="DELETE", id_token=id_token, data={"user": user}) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if("message" in response_data and response_data["message"] == "Success"):
+                    logger.info("Successfully deleted collection with ID: %s. Response: %s", collection_id, response_data)
+                    flash("Collection successfully deleted", "success")
+                else:
+                    error_msg = f"Failed to delete collection: {response_data['message']}"
+                    logger.error(error_msg)
+                    flash(error_msg, "error")
+            else:
+                error_msg = f"Failed to delete collection: {r.status_code}"
+                try:
+                    error_data = r.json()
+                    if "message" in error_data:
+                        error_msg = error_data["message"]
+                except Exception:
+                    logger.exception("Failed to delete collection.")
+                logger.error("Failed to delete collection: %s - %s", r.status_code, r.text)
+                flash(error_msg, "error")
+    except Exception as e:
+        logger.exception("Exception while deleting collection.")
+        flash(f"Error deleting collection: {e!s}", "error")
+
+    # Redirect back to the resources page
+    return redirect("/resources")
+
+
+@app.route("/create-collection", methods=["GET", "POST"])
+@login_required
+def create_collection():
+    logger.info("Create collection endpoint called.")
+    id_token = session.get("id_token")
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    if request.method == "GET":
+        return render_template("create_collection.html", user=user)
+
+    # Retrieve form fields
+    collection_name = request.form.get("collection_name", None)
+    collection_description = request.form.get("collection_description", "")
+
+    # Prepare the data for the API request
+    data = {
+        "name": collection_name,
+        "description": collection_description,
+        "user": user,
+        "public": False  # Always set to False by default
+    }
+
+    try:
+        with api_request("create_collection", method="POST", data=data, id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+            logger.info("Created collection with ID: %s", result.get("collection_id"))
+            flash(f"Collection '{collection_name}' created successfully!", "success")
+            return redirect("/resources")
+    except Exception:
+        logger.exception("Create collection failed.")
+        flash("Failed to create collection. Please try again.", "error")
+        return redirect("/create-collection")
 
 
 @app.route("/export_sessions", methods=["POST"])

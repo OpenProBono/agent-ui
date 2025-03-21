@@ -306,3 +306,89 @@ def organize_sources(new_sources):
         source_data["entities"].sort(key=lambda x: x["pk"])
 
     return sorted_sources
+
+def fetch_collections(endpoint: str, id_token: str, existing_ids: set) -> list[dict]:
+    """Fetch collections from the user/public endpoint.
+
+    Parameters
+    ----------
+    endpoint : str
+        'view_user_collections' or 'view_public_collections'
+    id_token : str
+        The users ID token
+    existing_ids : set
+        Any collection IDs that were already fetched
+
+    Returns
+    -------
+    list[dict]
+        A list of dictionaries containing the collections data.
+
+    """
+    collections = []
+
+    try:
+        with api_request(endpoint, method="GET", id_token=id_token) as r:
+            r.raise_for_status()
+            response_data = r.json()
+    except Exception:
+        logger.exception("Error fetching %s", endpoint)
+    else:
+        if response_data.get("message") != "Success" or "data" not in response_data:
+            logger.warning("Unexpected response from %s: %s", endpoint, response_data)
+            return collections
+
+        for collection_id, collection in response_data["data"].items():
+            if collection_id in existing_ids:
+                continue
+
+            created_on = datetime.datetime.now()
+            timestamp = collection.get("timestamp")
+            try:
+                if isinstance(timestamp, dict) and "seconds" in timestamp:
+                    created_on = datetime.datetime.fromtimestamp(timestamp["seconds"])
+                elif isinstance(timestamp, str):
+                    created_on = datetime.datetime.fromisoformat(timestamp)
+            except (ValueError, TypeError):
+                pass
+
+            collections.append({
+                "id": collection_id,
+                "name": collection.get("name", collection_id),
+                "created_on": created_on.isoformat(),
+                "resource_count": f'{collection.get("resource_count", 0):,}',
+            })
+
+    return collections
+
+def get_collections(id_token: str) -> tuple[list[dict], list[dict]]:
+    """Get a users collections and public collections.
+
+    Parameters
+    ----------
+    id_token : str
+        the users ID token
+
+    Returns
+    -------
+    tuple[list[dict], list[dict]]
+        user_collections, public_collections
+
+    """
+    user_collections = fetch_collections("view_user_collections", id_token, set())
+    existing_ids = {c["id"] for c in user_collections}
+
+    public_collections = fetch_collections("view_public_collections", id_token, existing_ids)
+
+    if not user_collections and not public_collections:
+        logger.warning("No collections found. Using example data.")
+        # Example data
+        user_collections = [
+            {"id": "search_collection_vj1", "name": "search_collection_vj1", "created_on": datetime.date.today().isoformat(), "resource_count": 10000},
+        ]
+        public_collections = [
+            {"id": "courtlistener", "name": "courtlistener", "created_on": datetime.date.today().isoformat(), "resource_count": 1000000},
+            {"id": "search_collection_gemini", "name": "search_collection_gemini", "created_on": datetime.date.today().isoformat(), "resource_count": 10000},
+        ]
+
+    return user_collections, public_collections

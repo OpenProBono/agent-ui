@@ -22,6 +22,19 @@
             --bs-table-striped-color: #242424; /* Text color for striped rows */
             --bs-table-striped-bg: #f8fcfd;   /* Background color for striped rows */
         }
+        .section-divider {
+            margin: 40px 0 20px 0;
+            border-top: 1px solid #ddd;
+        }
+        .created-on-col {
+            min-width: 160px;
+        }
+        .resource-count-col {
+            width: 180px;
+        }
+        .action-col {
+            width: 180px;
+        }
     </style>
 </head>
 <body>
@@ -31,46 +44,148 @@
     <!-- Main Content -->
     <div class="main-content">
         <!-- Header -->
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>Resources</h2>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <span class="h2 me-3">My Collections</span>
+                <a href="/create-collection" class="btn btn-primary">Create Collection</a>
+            </div>
             {% include 'components/profile_dropdown.html' %}
         </div>
 
-        <!-- Resource Groups Section -->
-        <div class="mb-5">
-            <div class="d-flex justify-content-between align-items-center">
-                <h4>Collections</h4>
-                <a href="/create-collection" class="btn btn-primary">Create Collection</a>
-            </div>
-            <div class="table-responsive mt-3">
-                <table class="table table-bordered table-striped custom-table">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Name</th>
-                            <th>Created On</th>
-                            <th>Number of Resources</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="custom-table-striped">
-                        {% for collection in collections %}
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- My Collections Table -->
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped custom-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th class="created-on-col">Created On</th>
+                        <th class="resource-count-col">Number of Resources</th>
+                        <th class="action-col">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="custom-table-striped">
+                    {% if user_collections %}
+                        {% for collection in user_collections %}
                         <tr>
                             <td>{{ collection.name }}</td>
-                            <td>{{ collection.created_on }}</td>
-                            <td>{{ collection.resource_count }}</td>
-                            <td>
+                            <td class="created-on-col">{{ collection.created_on }}</td>
+                            <td class="resource-count-col">{{ collection.resource_count }}</td>
+                            <td class="action-col">
                                 <div class="btn-group" role="group">
-                                    <a href="/search/{{ collection.name|lower }}" class="btn btn-primary btn-sm">Search</a>
-                                    <a href="/manage/{{ collection.name|lower }}" class="btn btn-warning btn-sm">Manage</a>
+                                    <a href="/search/{{ collection.id }}" class="btn btn-success btn-sm">Search</a>
+                                    <a href="/manage/{{ collection.id }}" class="btn btn-warning btn-sm">Manage</a>
+                                    <a href="#" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal{{ collection.id }}">Delete</a>
+                                </div>
+                                
+                                <!-- Delete Confirmation Modal -->
+                                <div class="modal fade" id="deleteModal{{ collection.id }}" tabindex="-1" aria-labelledby="deleteModalLabel{{ collection.id }}" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" id="deleteModalLabel{{ collection.id }}">Confirm Delete</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                Are you sure you want to delete the collection "{{ collection.name }}"? This action cannot be undone.
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                <a href="/delete-collection/{{ collection.id }}" class="btn btn-danger">Delete</a>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </td>
                         </tr>
                         {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                    {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <strong>You don't have any collections yet.</strong> 
+                                    <p class="mb-2 mt-2">Create your first collection by clicking the "Create Collection" button above.</p>
+                                    <a href="/create-collection" class="btn btn-primary mt-2">Create Collection</a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Public Collections Section -->
+        <div class="section-divider"></div>
+        <h2 class="mb-3">Public Collections</h2>
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped custom-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th class="created-on-col">Created On</th>
+                        <th class="resource-count-col">Number of Resources</th>
+                        <th class="action-col">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="custom-table-striped">
+                    {% if public_collections %}
+                        {% for collection in public_collections %}
+                        <tr>
+                            <td>{{ collection.name }}</td>
+                            <td class="created-on-col">{{ collection.created_on }}</td>
+                            <td class="resource-count-col">{{ collection.resource_count }}</td>
+                            <td class="action-col">
+                                <div class="btn-group" role="group">
+                                    <a href="/search/{{ collection.id }}" class="btn btn-success btn-sm">Search</a>
+                                    <a href="/manage/{{ collection.id }}" class="btn btn-warning btn-sm">Manage</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4">
+                                <div class="alert alert-info mb-0">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <strong>No public collections available.</strong>
+                                    <p class="mb-0 mt-2">Public collections will appear here when they become available.</p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script>
+        // Format timestamps
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only select cells in the table body, not the header
+            document.querySelectorAll('tbody .created-on-col').forEach(element => {
+                const timestamp = element.textContent;
+                if (timestamp && timestamp.trim()) {
+                    try {
+                        element.textContent = moment(timestamp).format('MMM D, YYYY [at] h:mm A');
+                    } catch (e) {
+                        console.error('Error formatting timestamp:', e);
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

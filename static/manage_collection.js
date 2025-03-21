@@ -6,10 +6,10 @@ document.addEventListener('DOMContentLoaded', function() {
     clearButton.disabled = true;
     
     // Extract collection name from URL path
-    const collectionName = window.location.pathname.split('/').pop();
+    const collectionId = window.location.pathname.split('/').pop();
     
     // call get_resource_count() endpoint with collection parameter
-    fetch(`/resource_count/${collectionName}`)
+    fetch(`/resource_count/${collectionId}`)
         .then(response => response.json())
         .then(data => {
             if (data["message"] == "Success") {
