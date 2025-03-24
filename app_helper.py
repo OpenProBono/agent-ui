@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import datetime
 import logging
 import os
 import re
 from html import escape
+from typing import TYPE_CHECKING
 
 import requests
 from markdown import markdown
+
+if TYPE_CHECKING:
+    from werkzeug.datastructures import FileStorage
 
 JURISDICTIONS = [
     {"display": "Federal Appellate", "value": "us-app"},
@@ -110,6 +116,32 @@ def api_request(
     elif method == "DELETE":
         return requests.delete(url, headers=headers, json=data, timeout=timeout, stream=stream)
     return requests.post(url, headers=headers, json=data, files=files, params=params, timeout=timeout, stream=stream)
+
+
+def upload_files(files: list[FileStorage], id_token: str, session_id: str) -> dict | None:
+    """Upload files and return the API call result on success."""
+    logger.info("Uploading files...")
+    # Prepare files for upload
+    files_to_upload = [
+        ("files", (file.filename, file.stream, file.content_type))
+        for file in files
+    ]
+    # Call the FastAPI file upload endpoint
+    try:
+        with api_request(
+            "upload_files",
+            id_token=id_token,
+            files=files_to_upload,
+            params={"session_id": session_id},
+        ) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Upload files failed.")
+        return None
+    else:
+        logger.info("Files finished uploading. Result: %s", result)
+        return result
 
 
 def mark_keyword(text, keyword):
@@ -306,6 +338,21 @@ def organize_sources(new_sources):
         source_data["entities"].sort(key=lambda x: x["pk"])
 
     return sorted_sources
+
+
+def fetch_sessions_api(user, id_token) -> list[dict]:
+    sessions = []
+    try:
+        with api_request("fetch_sessions", method="POST", data={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "sessions" in response_data:
+                    sessions = response_data["sessions"]
+                    logger.info(f"Fetched {len(sessions)} sessions for user")
+    except Exception:
+        logger.exception("Failed to fetch sessions for user")
+    return sessions
+
 
 def fetch_collections(endpoint: str, id_token: str, existing_ids: set) -> list[dict]:
     """Fetch collections from the user/public endpoint.

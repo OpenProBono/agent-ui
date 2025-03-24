@@ -149,7 +149,7 @@
                 .then(data => {
                     if (data["message"] == "Success") {
                         document.getElementById('resource-count').innerHTML = `There are currently ${data["resource_count"].toLocaleString()} resources indexed.`;
-                        document.getElementById('searchButton').disabled = false;
+                        document.getElementById('searchButton').disabled = data["resource_count"] > 0 ? false : true;
                     } else {
                         document.getElementById('resource-count').innerHTML = `Unable to index resources.`;
                     }

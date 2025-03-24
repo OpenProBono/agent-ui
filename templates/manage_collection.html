@@ -36,6 +36,18 @@
         .card-header h5 {
             overflow-wrap: anywhere;
         }
+        .file-upload {
+            margin-bottom: 15px;
+        }
+        .file-list {
+            margin-top: 10px;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -71,7 +83,7 @@
                         <input type="date" class="form-control" name="before_date" id="before_date" value="{{ form_data.before_date if form_data else '' }}" form="browseForm">
                     </div>
                     <div class="mb-3">
-                        <label for="per_page" class="form-label">Excerpts per page</label>
+                        <label for="per_page" class="form-label">Sources per Page</label>
                         <select name="per_page" class="form-select" aria-label="Per page select" form="browseForm" id="per_page">
                             <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
                             <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
@@ -97,7 +109,57 @@
                 </div>
             </div>
             <div class="col-md-9">
-                <h4>Results</h4>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4>Results</h4>
+                    <div>
+                        <button type="button" class="btn btn-danger me-2" id="deleteSelectedBtn" style="display: none;">
+                            <i class="bi bi-trash"></i> Delete Selected
+                        </button>
+                        <button type="button" class="btn btn-primary" id="addResourceBtn">
+                            <i class="bi bi-plus-circle"></i> Add Resource
+                        </button>
+                    </div>
+                </div>
+                <!-- Add Resource Modal -->
+                <div class="modal fade" id="addResourceModal" tabindex="-1" aria-labelledby="addResourceModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="addResourceModalLabel">Add Resource to {{ collection }}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="addResourceForm">
+                                    <div class="mb-3">
+                                        <label for="resourceType" class="form-label">Resource Type</label>
+                                        <select class="form-select" id="resourceType" required>
+                                            <option value="">Select Resource Type</option>
+                                            <option value="url">URL</option>
+                                            <option value="file">File</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-3" id="urlInputGroup" style="display: none;">
+                                        <label for="urlInput" class="form-label">URLs</label>
+                                        <textarea class="form-control" id="urlInput" placeholder="https://example.com&#10;https://another-example.com" rows="3"></textarea>
+                                        <div class="form-text">Enter multiple URLs, one per line</div>
+                                    </div>
+                                    <div class="mb-3" id="fileInputGroup" style="display: none;">
+                                        <label for="fileInput" class="form-label">Files</label>
+                                        <div class="file-upload">
+                                            <input type="file" id="fileInput" class="form-control" multiple accept=".txt,.doc,.docx,.pdf" onchange="handleFileUpload(this.files)">
+                                            <div id="file-list" class="file-list"></div>
+                                        </div>
+                                        <div class="form-text">You can select multiple files by holding Ctrl (or Cmd on Mac) while selecting.</div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="submitAddResource">Add Resource</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 {% if results %}
                     {% for result in results %}
                     <div class="card mb-3">
@@ -118,7 +180,7 @@
                     <ul class="pagination justify-content-end">
                         {% if page > 1 %}
                             <li class="page-item">
-                                <a href="{{ url_for('manage', page=page-1, per_page=per_page, collection=collection_id if collection_id else collection, **form_data) }}" class="page-link">Previous</a>
+                                <a href="{{ url_for('manage', page=page-1, per_page=per_page, collection_id=vdb_id if vdb_id else collection, **form_data) }}" class="page-link">Previous</a>
                             </li>
                         {% else %}
                             <li class="page-item disabled">
@@ -127,7 +189,7 @@
                         {% endif %}
                         {% if has_next %}
                             <li class="page-item">
-                                <a href="{{ url_for('manage', page=page+1, per_page=per_page, collection=collection_id if collection_id else collection, **form_data) }}" class="page-link">Next</a>
+                                <a href="{{ url_for('manage', page=page+1, per_page=per_page, collection_id=vdb_id if vdb_id else collection, **form_data) }}" class="page-link">Next</a>
                             </li>
                         {% else %}
                             <li class="page-item disabled">

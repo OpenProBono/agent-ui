@@ -22,11 +22,13 @@ from app_helper import (
     SEARCH_METHODS,
     api_request,
     api_url,
+    fetch_sessions_api,
     format_summary,
     generate_source_context,
     get_collections,
     logger,
     organize_sources,
+    upload_files,
 )
 from auth import check_auth, login_required, refresh_token, should_refresh_token
 
@@ -37,19 +39,6 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production
 app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(hours=12)
 # Set authentication function
 app.before_request(check_auth)
-
-def fetch_sessions_api(user, id_token) -> list[dict]:
-    sessions = []
-    try:
-        with api_request("fetch_sessions", method="POST", data={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
-            if r.status_code == 200:
-                response_data = r.json()
-                if response_data.get("message") == "Success" and "sessions" in response_data:
-                    sessions = response_data["sessions"]
-                    logger.info(f"Fetched {len(sessions)} sessions for user")
-    except Exception:
-        logger.exception("Failed to fetch sessions for user")
-    return sessions
 
 @app.route("/signup")
 def signup():
@@ -343,26 +332,9 @@ def chat():
         session_id = request.form.get("sessionId")
 
         if files:
-            logger.info("Uploading files...")
-            # Prepare files for upload
-            files_to_upload = [
-                ("files", (file.filename, file.stream, file.content_type))
-                for file in files
-            ]
-            # Call the FastAPI file upload endpoint
-            try:
-                with api_request(
-                    "upload_files",
-                    id_token=id_token,
-                    files=files_to_upload,
-                    params={"session_id": session_id},
-                ) as r:
-                    r.raise_for_status()
-                    result = r.json()
-            except Exception:
-                logger.exception("Upload files failed.")
+            result = upload_files(files, id_token, session_id)
+            if result is None:
                 return jsonify({"error": "Failed to upload files"}), 400
-            logger.info("Files finished uploading. Result: %s", result)
             return jsonify(result), 200
         logger.warning("No files were provided.")
         return jsonify({"error": "No files provided"}), 400
@@ -594,7 +566,7 @@ def search(collection_id: str):
     user = {"email": email, "firebase_uid": uid}
     if not semantic:
         return render_template(
-            "search.html",
+            "search_collection.html",
             collection=display_name,
             collection_id=collection_id,
             jurisdictions=JURISDICTIONS,
@@ -641,7 +613,7 @@ def search(collection_id: str):
     elapsed = str(round(end - start, 5))
 
     return render_template(
-        "search.html",
+        "search_collection.html",
         collection=display_name,
         results=sources,
         results_count=len(results),
@@ -733,6 +705,101 @@ def get_resource_count(collection_id) -> int:
     if "resource_count" in result:
         return {"message": "Success", "resource_count": result["resource_count"]}
     return {"message": "Failure: no resource count found"}
+
+
+@app.route("/add_resource/<collection_id>", methods=["POST"])
+@login_required
+def add_resource(collection_id):
+    """Add a resource to a collection."""
+    id_token = session.get("id_token")
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid"),
+    }
+
+    resource_type = request.form.get("type")
+
+    # Prepare the data for the API call
+    data = {
+        "vdb_id": collection_id,
+        "resource_type": resource_type,
+        "user": user
+    }
+
+    if resource_type == "url":
+        data["url"] = request.form.get("url")
+    elif resource_type == "file":
+        if "file" not in request.files:
+            return jsonify({"message": "No file uploaded"}), 400
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"message": "No file selected"}), 400
+        # Pass the file to the API
+        files = {"file": (file.filename, file.stream, file.content_type)}
+        try:
+            with api_request(
+                "add_resource", method="POST", id_token=id_token, data=data, files=files
+            ) as r:
+                if r.status_code == 200:
+                    return jsonify({"message": "Success", "data": r.json()})
+                return jsonify({"message": "Error adding file resource", "details": r.text}), r.status_code
+        except Exception as e:
+            logger.exception("Error adding file resource")
+            return jsonify({"message": "Error adding file resource", "details": str(e)}), 500
+    elif resource_type == "opinion":
+        data["opinion_id"] = request.form.get("opinion_id")
+    else:
+        return jsonify({"message": "Invalid resource type"}), 400
+
+    # For URL and opinion resources
+    if resource_type != "file":
+        try:
+            with api_request(
+                "add_resource", method="POST", id_token=id_token, data=data
+            ) as r:
+                if r.status_code == 200:
+                    return jsonify({"message": "Success", "data": r.json()})
+                return jsonify({"message": f"Error adding {resource_type} resource", "details": r.text}), r.status_code
+        except Exception as e:
+            logger.exception(f"Error adding {resource_type} resource")
+            return jsonify({"message": f"Error adding {resource_type} resource", "details": str(e)}), 500
+
+    return jsonify({"message": "Unknown error"}), 500
+
+
+@app.route("/remove_resource/<collection_id>", methods=["POST"])
+@login_required
+def remove_resource(collection_id):
+    """Remove a resource from a collection."""
+    id_token = session.get("id_token")
+    user = {
+        "email": session.get("email"),
+        "firebase_uid": session.get("firebase_uid"),
+    }
+
+    resource_id = request.form.get("resource_id")
+    resource_type = request.form.get("resource_type")
+
+    if not resource_id or not resource_type:
+        return jsonify({"message": "Missing resource ID or type"}), 400
+
+    data = {
+        "vdb_id": collection_id,
+        "resource_id": resource_id,
+        "resource_type": resource_type,
+        "user": user
+    }
+
+    try:
+        with api_request(
+            "remove_resource", method="POST", id_token=id_token, data=data
+        ) as r:
+            if r.status_code == 200:
+                return jsonify({"message": "Success", "data": r.json()})
+            return jsonify({"message": "Error removing resource", "details": r.text}), r.status_code
+    except Exception as e:
+        logger.exception("Error removing resource")
+        return jsonify({"message": "Error removing resource", "details": str(e)}), 500
 
 
 @app.route("/summary/<resource_id>")
