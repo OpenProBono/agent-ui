@@ -138,58 +138,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (urls.length === 0) {
                     alert('Please enter at least one URL');
                     isValid = false;
-                } else {                    
-                    for (const url of urls) {
-                        const formData = new FormData();
-                        formData.append('type', resourceType);
-                        formData.append('url', url.trim());
-                        
-                        try {
-                            const response = await fetch(`/add_resource/${collectionId}`, {
-                                method: 'POST',
-                                body: formData
-                            });
-                            const data = await response.json();
-                            if (data.message === 'Success') {
-                                resourcesAdded++;
-                            } else {
-                                resourcesFailed++;
-                                console.error(`Error adding URL ${url}: ${data.details || data.message}`);
-                            }
-                        } catch (error) {
-                            resourcesFailed++;
-                            console.error(`Error adding URL ${url}: ${error}`);
+                } else {
+                    const formData = new FormData();
+                    formData.append('resource_type', resourceType);
+                    urls.forEach(url => {
+                        formData.append('urls', url.trim());
+                    });
+                    
+                    try {
+                        const response = await fetch(`/upload_resources/${collectionId}`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+                        if (data.message === 'Success') {
+                            resourcesAdded = urls.length;
+                        } else {
+                            resourcesFailed = urls.length;
+                            console.error(`Error adding URLs: ${data.details || data.message}`);
                         }
+                    } catch (error) {
+                        resourcesFailed = urls.length;
+                        console.error(`Error adding URLs: ${error}`);
                     }
                 }
             } else if (resourceType === 'file') {
-                const fileInput = document.getElementById('fileInput');
-                if (!fileInput.files || fileInput.files.length === 0) {
+                if (!uploadedFiles || uploadedFiles.length === 0) {
                     alert('Please select at least one file');
                     isValid = false;
-                } else {                    
-                    for (const file of fileInput.files) {
-                        console.log(file);
-                        const formData = new FormData();
-                        formData.append('type', resourceType);
-                        formData.append('file', file);
-                        
-                        try {
-                            const response = await fetch(`/add_resource/${collectionId}`, {
-                                method: 'POST',
-                                body: formData
-                            });
-                            const data = await response.json();
-                            if (data.message === 'Success') {
-                                resourcesAdded++;
-                            } else {
-                                resourcesFailed++;
-                                console.error(`Error adding file ${file.name}: ${data.details || data.message}`);
-                            }
-                        } catch (error) {
-                            resourcesFailed++;
-                            console.error(`Error adding file ${file.name}: ${error}`);
+                } else {
+                    const formData = new FormData();
+                    formData.append('resource_type', resourceType);
+                    uploadedFiles.forEach(file => {
+                        formData.append('files', file);
+                    });
+                    
+                    try {
+                        console.log(formData);
+                        const response = await fetch(`/upload_resources/${collectionId}`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await response.json();
+                        if (data.message === 'Success') {
+                            resourcesAdded = uploadedFiles.length;
+                        } else {
+                            resourcesFailed = uploadedFiles.length;
+                            console.error(`Error adding files: ${data.details || data.message}`);
                         }
+                    } catch (error) {
+                        resourcesFailed = uploadedFiles.length;
+                        console.error(`Error adding files: ${error}`);
                     }
                 }
             }
@@ -211,6 +210,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally {
             submitAddResource.disabled = false;
             submitAddResource.innerHTML = 'Add Resource';
+            uploadedFiles = [];
+            updateFileList();
         }
     });
 

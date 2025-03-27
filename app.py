@@ -707,64 +707,43 @@ def get_resource_count(collection_id) -> int:
     return {"message": "Failure: no resource count found"}
 
 
-@app.route("/add_resource/<collection_id>", methods=["POST"])
+@app.route("/upload_resources/<collection_id>", methods=["POST"])
 @login_required
-def add_resource(collection_id):
-    """Add a resource to a collection."""
+def upload_resources(collection_id: str):
+    """Add multiple resources (URLs or files) to a collection."""
     id_token = session.get("id_token")
-    user = {
-        "email": session.get("email"),
-        "firebase_uid": session.get("firebase_uid"),
-    }
-
-    resource_type = request.form.get("type")
-
-    # Prepare the data for the API call
-    data = {
-        "vdb_id": collection_id,
+    resource_type = request.form.get("resource_type")
+    urls = request.form.getlist("urls")
+    summaries = request.form.getlist("summaries")
+    files = request.files.getlist("files")
+    files_payload = [
+        ("files", (file.filename, file.stream, file.content_type))
+        for file in files
+    ] if files else []
+    params = {
         "resource_type": resource_type,
-        "user": user
+        "target_id": collection_id,
+        "urls": urls or None,
+        "summaries": summaries or None,
     }
 
-    if resource_type == "url":
-        data["url"] = request.form.get("url")
-    elif resource_type == "file":
-        if "file" not in request.files:
-            return jsonify({"message": "No file uploaded"}), 400
-        file = request.files["file"]
-        if file.filename == "":
-            return jsonify({"message": "No file selected"}), 400
-        # Pass the file to the API
-        files = {"file": (file.filename, file.stream, file.content_type)}
-        try:
-            with api_request(
-                "add_resource", method="POST", id_token=id_token, data=data, files=files
-            ) as r:
-                if r.status_code == 200:
-                    return jsonify({"message": "Success", "data": r.json()})
-                return jsonify({"message": "Error adding file resource", "details": r.text}), r.status_code
-        except Exception as e:
-            logger.exception("Error adding file resource")
-            return jsonify({"message": "Error adding file resource", "details": str(e)}), 500
-    elif resource_type == "opinion":
-        data["opinion_id"] = request.form.get("opinion_id")
+    # Make the API call
+    try:
+        with api_request(
+            "upload_resources",
+            id_token=id_token,
+            params=params,
+            files=files_payload,
+        ) as r:
+            r.raise_for_status()
+            result = r.json()
+    except Exception:
+        logger.exception("Error adding resources")
+        return jsonify({"message": "Failure: error adding resources"}), 500
     else:
-        return jsonify({"message": "Invalid resource type"}), 400
-
-    # For URL and opinion resources
-    if resource_type != "file":
-        try:
-            with api_request(
-                "add_resource", method="POST", id_token=id_token, data=data
-            ) as r:
-                if r.status_code == 200:
-                    return jsonify({"message": "Success", "data": r.json()})
-                return jsonify({"message": f"Error adding {resource_type} resource", "details": r.text}), r.status_code
-        except Exception as e:
-            logger.exception(f"Error adding {resource_type} resource")
-            return jsonify({"message": f"Error adding {resource_type} resource", "details": str(e)}), 500
-
-    return jsonify({"message": "Unknown error"}), 500
+        if "message" in result and result["message"] != "Success":
+            return jsonify(result), 500
+        return jsonify({"message": "Success", "data": result})
 
 
 @app.route("/remove_resource/<collection_id>", methods=["POST"])
