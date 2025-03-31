@@ -78,7 +78,7 @@ def login_page():
             # Error refreshing, clear session
             logger.exception("Error refreshing token on login page")
             session.clear()
-            flash("Authentication error. Please log in again.", "error")
+            flash("Authentication error. Please log in again.", "danger")
 
     # Pass the redirect_to parameter to the template
     return render_template("signup.html", redirect_to=redirect_to)
@@ -549,12 +549,12 @@ def search(collection_id: str):
     except Exception:
         msg = f"Error getting collection info: {collection_id}"
         logger.exception(msg)
-        flash(msg, "error")
+        flash(msg, "danger")
         return redirect(url_for("resources"))
 
     if result["message"] != "Success":
         logger.error("view_collection endpoint got error: %s", result)
-        flash(result["message"], "error")
+        flash(result["message"], "danger")
         return redirect(url_for("resources"))
 
     display_name = result["data"]["name"]
@@ -810,7 +810,12 @@ def create_agent():
     id_token = session.get("id_token")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     if request.method == "GET":
-        return render_template("create_agent.html", user=user, search_methods=SEARCH_METHODS)
+        user_collections, public_collections = get_collections(id_token)
+        return render_template("create_agent.html",
+                              user=user,
+                              search_methods=SEARCH_METHODS,
+                              user_collections=user_collections,
+                              public_collections=public_collections)
     # Retrieve core fields
     bot_name = request.form.get("bot_name", None)
     system_prompt = request.form.get("system_prompt", None)
@@ -819,6 +824,10 @@ def create_agent():
     search_methods = request.form.getlist("search_methods[]")
     search_prefixes = request.form.getlist("search_prefixes[]")
     search_prompts = request.form.getlist("search_prompts[]")
+    vdb_names = request.form.getlist("vdb_names[]")
+    vdb_collections = request.form.getlist("vdb_collections[]")
+    vdb_ks = request.form.getlist("vdb_ks[]")
+    vdb_prompts = request.form.getlist("vdb_prompts[]")
 
     # Build search tools list
     search_tools = [
@@ -829,6 +838,17 @@ def create_agent():
             "prompt": search_prompts[i],
         }
         for i in range(len(search_names))
+    ]
+
+    # Build VDB tools list
+    vdb_tools = [
+        {
+            "name": vdb_names[i],
+            "vdb_id": vdb_collections[i],
+            "k": int(vdb_ks[i]),
+            "prompt": vdb_prompts[i],
+        }
+        for i in range(len(vdb_names))
     ]
 
     # Chat model configuration
@@ -845,7 +865,7 @@ def create_agent():
         "system_prompt": system_prompt,
         "message_prompt": message_prompt,
         "search_tools": search_tools,
-        "vdb_tools": [],  # Empty VDB tools list
+        "vdb_tools": vdb_tools,
         "chat_model": chat_model,
         "user": user,
         "public": False,  # Always set to False
@@ -860,7 +880,7 @@ def create_agent():
             return redirect(f"/agent/{result.get('bot_id')}")
     except Exception:
         logger.exception("Create agent failed.")
-        flash("Failed to create agent. Please try again.", "error")
+        flash("Failed to create agent. Please try again.", "danger")
         return redirect("/create-agent")
 
 
@@ -919,7 +939,17 @@ def clone_agent(agent):
         "email": email,
         "firebase_uid": session.get("firebase_uid")
     }
-    return render_template("create_agent.html", clone=True, agent=agent, user=user, search_methods=SEARCH_METHODS)
+
+    # Get collections for the VDB tool dropdown
+    user_collections, public_collections = get_collections(id_token)
+
+    return render_template("create_agent.html",
+                          clone=True,
+                          agent=agent,
+                          user=user,
+                          search_methods=SEARCH_METHODS,
+                          user_collections=user_collections,
+                          public_collections=public_collections)
 
 
 @app.route("/delete-agent/<agent_id>", methods=["GET"])
@@ -944,7 +974,7 @@ def delete_agent(agent_id):
                 else:
                     error_msg = f"Failed to delete agent: {response_data['message']}"
                     logger.error(error_msg)
-                    flash(error_msg, "error")
+                    flash(error_msg, "danger")
             else:
                 error_msg = f"Failed to delete agent: {r.status_code}"
                 try:
@@ -954,10 +984,10 @@ def delete_agent(agent_id):
                 except Exception:
                     logger.exception("Failed to delete agent.")
                 logger.error("Failed to delete agent: %s - %s", r.status_code, r.text)
-                flash(error_msg, "error")
+                flash(error_msg, "danger")
     except Exception as e:
         logger.exception("Exception while deleting agent.")
-        flash(f"Error deleting agent: {e!s}", "error")
+        flash(f"Error deleting agent: {e!s}", "danger")
 
     # Redirect back to the agents page
     return redirect("/agents")
@@ -986,7 +1016,7 @@ def delete_collection(collection_id):
                 else:
                     error_msg = f"Failed to delete collection: {response_data['message']}"
                     logger.error(error_msg)
-                    flash(error_msg, "error")
+                    flash(error_msg, "danger")
             else:
                 error_msg = f"Failed to delete collection: {r.status_code}"
                 try:
@@ -996,10 +1026,10 @@ def delete_collection(collection_id):
                 except Exception:
                     logger.exception("Failed to delete collection.")
                 logger.error("Failed to delete collection: %s - %s", r.status_code, r.text)
-                flash(error_msg, "error")
+                flash(error_msg, "danger")
     except Exception as e:
         logger.exception("Exception while deleting collection.")
-        flash(f"Error deleting collection: {e!s}", "error")
+        flash(f"Error deleting collection: {e!s}", "danger")
 
     # Redirect back to the resources page
     return redirect("/resources")
@@ -1036,7 +1066,7 @@ def create_collection():
             return redirect("/resources")
     except Exception:
         logger.exception("Create collection failed.")
-        flash("Failed to create collection. Please try again.", "error")
+        flash("Failed to create collection. Please try again.", "danger")
         return redirect("/create-collection")
 
 
@@ -1203,7 +1233,7 @@ def create_eval_dataset():
 
         # Validate required fields
         if not name or not inputs or not bot_ids:
-            flash("Please provide a name, at least one input, and select at least one bot.", "error")
+            flash("Please provide a name, at least one input, and select at least one bot.", "danger")
             return redirect("/create-eval-dataset")
 
         # Create dataset object
@@ -1224,12 +1254,12 @@ def create_eval_dataset():
                 flash(f"Evaluation dataset '{name}' created successfully! Evaluations are running in the background.", "success")
                 return redirect(f"/eval-dataset/{result['dataset_id']}")
             else:
-                flash(f"Failed to create evaluation dataset: {result.get('message', 'Unknown error')}", "error")
+                flash(f"Failed to create evaluation dataset: {result.get('message', 'Unknown error')}", "danger")
                 return redirect("/create-eval-dataset")
 
     except Exception as e:
         logger.exception("Error creating evaluation dataset.")
-        flash(f"Error creating evaluation dataset: {e!s}", "error")
+        flash(f"Error creating evaluation dataset: {e!s}", "danger")
         return redirect("/create-eval-dataset")
 
 
@@ -1273,12 +1303,12 @@ def view_eval_dataset(dataset_id):
                                           dataset=dataset["dataset"],
                                           bots=bots)
                 else:
-                    flash(f"Failed to fetch evaluation dataset: {dataset.get('message', 'Unknown error')}", "error")
+                    flash(f"Failed to fetch evaluation dataset: {dataset.get('message', 'Unknown error')}", "danger")
             else:
-                flash(f"Failed to fetch evaluation dataset: {r.status_code}", "error")
+                flash(f"Failed to fetch evaluation dataset: {r.status_code}", "danger")
     except Exception as e:
         logger.exception("Error fetching evaluation dataset.")
-        flash(f"Error fetching evaluation dataset: {e!s}", "error")
+        flash(f"Error fetching evaluation dataset: {e!s}", "danger")
 
     return redirect("/eval-datasets")
 
@@ -1369,7 +1399,7 @@ def create_labeled_dataset(dataset_id):
     logger.info(f"Aspect Types: {aspect_types}")
 
     if not dataset_name or not aspect_ids:
-        flash("Dataset name and at least one aspect are required", "error")
+        flash("Dataset name and at least one aspect are required", "danger")
         return redirect(f"/new-label-eval-dataset/{dataset_id}")
 
     # Prepare data for API request - match the expected format
@@ -1434,17 +1464,17 @@ def create_labeled_dataset(dataset_id):
                 logger.exception("Failed to parse validation errors from API response.")
 
             logger.error(f"Validation error: {error_detail}")
-            flash(f"Validation error: {error_detail}", "error")
+            flash(f"Validation error: {error_detail}", "danger")
             return redirect(f"/new-label-eval-dataset/{dataset_id}")
 
         if response.status_code != 200:
             logger.error(f"Failed to create labeled dataset: {response.status_code} - {response.text}")
-            flash(f"Failed to create labeled dataset: {response.status_code}", "error")
+            flash(f"Failed to create labeled dataset: {response.status_code}", "danger")
             return redirect(f"/new-label-eval-dataset/{dataset_id}")
 
         result = response.json()
         if result.get("message") != "Success":
-            flash(f"Failed to create labeled dataset: {result.get('message', 'Unknown error')}", "error")
+            flash(f"Failed to create labeled dataset: {result.get('message', 'Unknown error')}", "danger")
             return redirect(f"/new-label-eval-dataset/{dataset_id}")
         if "labeled_dataset_id" in result:
             # Redirect to the label-eval-dataset endpoint
@@ -1454,7 +1484,7 @@ def create_labeled_dataset(dataset_id):
             return redirect("/labeled-eval-datasets")
     except Exception as e:
         logger.exception(f"Error creating labeled dataset: {str(e)}")
-        flash(f"Error creating labeled dataset: {str(e)}", "error")
+        flash(f"Error creating labeled dataset: {str(e)}", "danger")
         return redirect(f"/new-label-eval-dataset/{dataset_id}")
 
 @app.route("/labeled-eval-datasets", methods=["GET"])
@@ -1478,12 +1508,12 @@ def labeled_eval_datasets():
                                           user=user, 
                                           labeled_datasets=result["datasets"])
                 else:
-                    flash(f"Failed to fetch labeled datasets: {result.get('message', 'Unknown error')}", "error")
+                    flash(f"Failed to fetch labeled datasets: {result.get('message', 'Unknown error')}", "danger")
             else:
-                flash(f"Failed to fetch labeled datasets: {r.status_code}", "error")
+                flash(f"Failed to fetch labeled datasets: {r.status_code}", "danger")
     except Exception as e:
         logger.exception("Error fetching labeled datasets.")
-        flash(f"Error fetching labeled datasets: {e!s}", "error")
+        flash(f"Error fetching labeled datasets: {e!s}", "danger")
 
     return render_template("labeled_eval_datasets.html", user=user, labeled_datasets={})
 
@@ -1520,7 +1550,7 @@ def label_eval_dataset(dataset_id):
 
                     # Check if labeling_aspects exists
                     if "labeling_aspects" not in dataset or not dataset["labeling_aspects"]:
-                        flash("This dataset does not have any labeling aspects defined", "error")
+                        flash("This dataset does not have any labeling aspects defined", "danger")
                         return redirect("/labeled-eval-datasets")
 
                     return render_template("label_eval_dataset.html", 
@@ -1529,12 +1559,12 @@ def label_eval_dataset(dataset_id):
                                           dataset_id=dataset_id,
                                           bots=bots)
                 else:
-                    flash(f"Failed to fetch dataset: {result.get('message', 'Unknown error')}", "error")
+                    flash(f"Failed to fetch dataset: {result.get('message', 'Unknown error')}", "danger")
             else:
-                flash(f"Failed to fetch dataset: {r.status_code}", "error")
+                flash(f"Failed to fetch dataset: {r.status_code}", "danger")
     except Exception as e:
         logger.exception("Error fetching dataset.")
-        flash(f"Error fetching dataset: {e!s}", "error")
+        flash(f"Error fetching dataset: {e!s}", "danger")
 
     return redirect("/labeled-eval-datasets")
 

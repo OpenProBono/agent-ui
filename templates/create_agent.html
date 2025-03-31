@@ -130,6 +130,65 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- VDB Tools Configuration -->
+            <div class="form-section">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>VDB Tools Configuration</h2>
+                    <button type="button" class="btn btn-primary" id="add-vdb-tool-btn">Add VDB Tool</button>
+                </div>
+                <div id="vdb-tools-container">
+                    <!-- Dynamic VDB Tool fields will be added here -->
+                    {% if clone %}
+                    {% for tool in agent.vdb_tools %}
+                    <div class="border p-3 mb-3 rounded">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5>VDB Tool {{ loop.index }}</h5>
+                            <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
+                        </div>
+                        <div class="form-group my-2">
+                            <label>VDB Name</label>
+                            <input type="text" class="form-control" name="vdb_names[]" placeholder="Unique identifier for this VDB tool" value="{{ tool.name }}">
+                        </div>
+                        <div class="form-group my-2">
+                            <label>Collection Name</label>
+                            <select class="form-control" name="vdb_collections[]">
+                                <!-- Public Collections -->
+                                {% if public_collections %}
+                                <optgroup label="Public Collections">
+                                    {% for collection in public_collections %}
+                                    <option value="{{ collection.id }}" {{ "selected" if tool.vdb_id == collection.id else "" }}>
+                                        {{ collection.name }} ({{ collection.resource_count }} resources)
+                                    </option>
+                                    {% endfor %}
+                                </optgroup>
+                                {% endif %}
+                                
+                                <!-- User Collections -->
+                                {% if user_collections %}
+                                <optgroup label="Your Collections">
+                                    {% for collection in user_collections %}
+                                    <option value="{{ collection.id }}" {{ "selected" if tool.vdb_id == collection.id else "" }}>
+                                        {{ collection.name }} ({{ collection.resource_count }} resources)
+                                    </option>
+                                    {% endfor %}
+                                </optgroup>
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="form-group my-2">
+                            <label>K</label>
+                            <input type="number" class="form-control" name="vdb_ks[]" min="1" value="{{ tool.k }}" placeholder="Number of results to return">
+                        </div>
+                        <div class="form-group my-2">
+                            <label>VDB Prompt</label>
+                            <textarea class="form-control" name="vdb_prompts[]" rows="2" placeholder="Instructions on when and how to use this VDB tool">{{ tool.prompt }}</textarea>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
             
             <!-- Chat Model Configuration -->
             <div class="form-section">
@@ -369,8 +428,90 @@
             }
         }
 
-        // Attach event listeners to the Add button
-        document.getElementById('add-search-tool-btn').addEventListener('click', () => addSearchToolField('web_search', 'dynamic_serpapi', '', 'Use this tool to search the web for current information.'));
+        // --- VDB Tools Section ---
+        function addVdbToolField(name, collName, k, prompt) {
+            const container = document.getElementById('vdb-tools-container');
+            const div = document.createElement('div');
+            div.classList.add('border', 'p-3', 'mb-3');
+            
+            // Get the current collection options by cloning the select from the template
+            let collectionOptionsHTML = '';
+            
+            // Check if there's an existing VDB tool to clone the select options from
+            const existingSelects = document.querySelectorAll('#vdb-tools-container select[name="vdb_collections[]"]');
+            if (existingSelects.length > 0) {
+                // Clone the options from the first select
+                const optionsHTML = existingSelects[0].innerHTML;
+                collectionOptionsHTML = optionsHTML;
+            } else {
+                // Otherwise build the options HTML directly
+                // Public Collections
+                collectionOptionsHTML += '<optgroup label="Public Collections">';
+                {% for collection in public_collections %}
+                collectionOptionsHTML += `<option value="{{ collection.id }}" ${collName === '{{ collection.id }}' ? 'selected' : ''}>
+                    {{ collection.name }} ({{ collection.resource_count }} resources)
+                </option>`;
+                {% endfor %}
+                collectionOptionsHTML += '</optgroup>';
+                
+                // User Collections
+                collectionOptionsHTML += '<optgroup label="Your Collections">';
+                {% for collection in user_collections %}
+                collectionOptionsHTML += `<option value="{{ collection.id }}" ${collName === '{{ collection.id }}' ? 'selected' : ''}>
+                    {{ collection.name }} ({{ collection.resource_count }} resources)
+                </option>`;
+                {% endfor %}
+                collectionOptionsHTML += '</optgroup>';
+            }
+            
+            div.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5>VDB Tool</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-vdb-tool">Remove</button>
+                </div>
+                <div class="form-group my-2">
+                    <label>VDB Name</label>
+                    <input type="text" class="form-control" name="vdb_names[]" placeholder="Unique identifier for this VDB tool" value="${name}">
+                </div>
+                <div class="form-group my-2">
+                    <label>Collection Name</label>
+                    <select class="form-control" name="vdb_collections[]">
+                        ${collectionOptionsHTML}
+                    </select>
+                </div>
+                <div class="form-group my-2">
+                    <label>K</label>
+                    <input type="number" class="form-control" name="vdb_ks[]" min="1" value="${k}" placeholder="Number of results to return">
+                </div>
+                <div class="form-group my-2">
+                    <label>VDB Prompt</label>
+                    <textarea class="form-control" name="vdb_prompts[]" rows="2" placeholder="Instructions on when and how to use this VDB tool">${prompt}</textarea>
+                </div>
+            `;
+            // Attach event listener for the remove button
+            div.querySelector('.remove-vdb-tool').addEventListener('click', function() {
+                div.remove();
+                reIndexVdbToolFields();
+            });
+            container.appendChild(div);
+            reIndexVdbToolFields();
+        }
+
+        function reIndexVdbToolFields() {
+            const container = document.getElementById('vdb-tools-container');
+            const groups = container.children;
+            for (let i = 0; i < groups.length; i++) {
+                groups[i].querySelector('h5').innerText = `VDB Tool ${i + 1}`;
+            }
+        }
+
+        // Attach event listeners to the Add buttons
+        // pass empty string args to add search tool field
+        document.getElementById('add-search-tool-btn').addEventListener('click', () => addSearchToolField('', '', '', ''));
+        document.getElementById('add-vdb-tool-btn').addEventListener('click', () => addVdbToolField('', '', 4, ''));
+
+        // Optionally, you can add one default search tool on load:
+        // window.addEventListener('load', addSearchToolField);
     </script>
 </body>
 </html>
