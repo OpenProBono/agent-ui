@@ -146,7 +146,7 @@ def agents():
 
     try:
         # Fetch user's bots
-        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+        with api_request("view_bots", method="POST", json={"user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "data" in response_data:
@@ -180,7 +180,7 @@ def agents():
                 logger.error(f"Failed to fetch agents: {r.status_code} - {r.text}")
 
         # Fetch public bots
-        with api_request("view_public_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+        with api_request("view_public_bots", method="POST", json={"user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "data" in response_data:
@@ -349,7 +349,7 @@ def chat():
 
         def generate():
             try:
-                with api_request("chat_session_stream", id_token=id_token, data=request_data, stream=True) as r:
+                with api_request("chat_session_stream", id_token=id_token, json=request_data, stream=True) as r:
                     r.raise_for_status()
                     for line in r.iter_lines(decode_unicode=True):
                         if line:
@@ -374,7 +374,7 @@ def new_session(agent):
     id_token = session.get("id_token")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     try:
-        with api_request("initialize_session", id_token=id_token, data={"bot_id": agent, "user": user}) as r:
+        with api_request("initialize_session", id_token=id_token, json={"bot_id": agent, "user": user}) as r:
             r.raise_for_status()
             return jsonify(r.json())
     except Exception:
@@ -432,7 +432,7 @@ def sessions_page():
     # Get all available bots for filtering options
     bots = {}
     try:
-        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+        with api_request("view_bots", method="POST", json={"user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "data" in response_data:
@@ -455,7 +455,7 @@ def get_session_messages(session_id):
     try:
         user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
         data = {"session_id": session_id, "user": user}
-        with api_request("fetch_session_formatted_history", id_token=id_token, data=data) as r:
+        with api_request("fetch_session_formatted_history", id_token=id_token, json=data) as r:
             r.raise_for_status()
             session_data = r.json()
             logger.debug("Session messages endpoint got response: %s", session_data)
@@ -517,7 +517,7 @@ def feedback():
         "user": user,
     }
     try:
-        with api_request("session_feedback", id_token=id_token, data=data) as r:
+        with api_request("session_feedback", id_token=id_token, json=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -592,7 +592,7 @@ def search(collection_id: str):
     if before_date:
         data["before_date"] = before_date
     try:
-        with api_request("search_collection", id_token=id_token, data=data) as r:
+        with api_request("search_collection", id_token=id_token, json=data) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -643,20 +643,20 @@ def manage(collection_id: str):
     page = request.args.get("page", 1, int)
     per_page = request.args.get("per_page", 50, int)
     params = {"page": page, "per_page": per_page}
-    data = {"vdb_id": collection_id}
+    json = {"vdb_id": collection_id}
     if keyword:
-        data["keyword_query"] = keyword
+        json["keyword_query"] = keyword
     if jurisdictions and len(jurisdictions) != len(JURISDICTIONS):
-        data["jurisdictions"] = jurisdictions
+        json["jurisdictions"] = jurisdictions
     if after_date:
-        data["after_date"] = after_date
+        json["after_date"] = after_date
     if before_date:
-        data["before_date"] = before_date
+        json["before_date"] = before_date
     if source:
-        data["source"] = source
+        json["source"] = source
 
     try:
-        with api_request("browse_collection", id_token=id_token, data=data, params=params) as r:
+        with api_request("browse_collection", id_token=id_token, json=json, params=params) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
@@ -682,7 +682,7 @@ def manage(collection_id: str):
         collection=display_name,
         results=sources,
         results_count=len(results),
-        form_data=data,
+        form_data=json,
         elapsed=elapsed,
         jurisdictions=JURISDICTIONS,
         page=page,
@@ -723,6 +723,8 @@ def upload_resources(collection_id: str):
     params = {
         "resource_type": resource_type,
         "target_id": collection_id,
+    }
+    data = {
         "urls": urls or None,
         "summaries": summaries or None,
     }
@@ -732,6 +734,7 @@ def upload_resources(collection_id: str):
         with api_request(
             "upload_resources",
             id_token=id_token,
+            data=data,
             params=params,
             files=files_payload,
         ) as r:
@@ -771,7 +774,7 @@ def remove_resource(collection_id):
 
     try:
         with api_request(
-            "remove_resource", method="POST", id_token=id_token, data=data
+            "remove_resource", method="POST", id_token=id_token, json=data,
         ) as r:
             if r.status_code == 200:
                 return jsonify({"message": "Success", "data": r.json()})
@@ -849,7 +852,7 @@ def create_agent():
     }
 
     try:
-        with api_request("create_bot", method="POST", data=data, id_token=id_token) as r:
+        with api_request("create_bot", method="POST", json=data, id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
             logger.info("Created bot with ID: %s", result.get("bot_id"))
@@ -974,7 +977,7 @@ def delete_collection(collection_id):
         endpoint = f"delete_collection/{collection_id}"
         logger.info("Calling API endpoint: %s", endpoint)
 
-        with api_request(endpoint, method="DELETE", id_token=id_token, data={"user": user}) as r:
+        with api_request(endpoint, method="DELETE", id_token=id_token, json={"user": user}) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if("message" in response_data and response_data["message"] == "Success"):
@@ -1025,7 +1028,7 @@ def create_collection():
     }
 
     try:
-        with api_request("create_collection", method="POST", data=data, id_token=id_token) as r:
+        with api_request("create_collection", method="POST", json=data, id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
             logger.info("Created collection with ID: %s", result.get("collection_id"))
@@ -1064,7 +1067,7 @@ def export_sessions():
         # Get all available bots to retrieve bot names
         bots = {}
         try:
-            with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+            with api_request("view_bots", method="POST", json={"user": user}, id_token=id_token) as r:
                 if r.status_code == 200:
                     response_data = r.json()
                     if response_data.get("message") == "Success" and "data" in response_data:
@@ -1176,7 +1179,7 @@ def create_eval_dataset():
         # Get all available bots for selection
         bots = {}
         try:
-            with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+            with api_request("view_bots", method="POST", json={"user": user}, id_token=id_token) as r:
                 if r.status_code == 200:
                     response_data = r.json()
                     if response_data.get("message") == "Success" and "data" in response_data:
@@ -1213,7 +1216,7 @@ def create_eval_dataset():
         }
 
         # Call API to create the dataset and run evaluations
-        with api_request("run_eval_dataset", method="POST", data=dataset_data, id_token=id_token) as r:
+        with api_request("run_eval_dataset", method="POST", json=dataset_data, id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
 
@@ -1250,7 +1253,7 @@ def view_eval_dataset(dataset_id):
                     # Get all available bots to retrieve bot names
                     bots = {}
                     try:
-                        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                        with api_request("view_bots", method="POST", json={"user": user}, id_token=id_token) as r:
                             if r.status_code == 200:
                                 response_data = r.json()
                                 if response_data.get("message") == "Success" and "data" in response_data:
@@ -1317,7 +1320,7 @@ def clone_eval_dataset(dataset_id):
     # Get all available bots for selection
     bots = {}
     try:
-        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+        with api_request("view_bots", method="POST", json={"user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "data" in response_data:
@@ -1467,7 +1470,7 @@ def labeled_eval_datasets():
 
     # Fetch all labeled datasets
     try:
-        with api_request("get_user_labeled_datasets", method="GET", data={"user": user}, id_token=id_token) as r:
+        with api_request("get_user_labeled_datasets", method="GET", json={"user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 result = r.json()
                 if result.get("message") == "Success" and "datasets" in result:
@@ -1497,7 +1500,7 @@ def label_eval_dataset(dataset_id):
 
     # Fetch the dataset details
     try:
-        with api_request(f"get_labeled_dataset/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+        with api_request(f"get_labeled_dataset/{dataset_id}", method="GET", json={"user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 result = r.json()
                 if result.get("message") == "Success" and "dataset" in result:
@@ -1507,7 +1510,7 @@ def label_eval_dataset(dataset_id):
                     bots = {}
                     for bot_id in dataset.get("bot_ids", []):
                         try:
-                            with api_request(f"get_bot/{bot_id}", method="GET", data={"user": user}, id_token=id_token) as bot_r:
+                            with api_request(f"get_bot/{bot_id}", method="GET", json={"user": user}, id_token=id_token) as bot_r:
                                 if bot_r.status_code == 200:
                                     bot_result = bot_r.json()
                                     if bot_result.get("message") == "Success" and "bot" in bot_result:
@@ -1582,7 +1585,7 @@ def update_labeled_session_endpoint(dataset_id):
                         "notes": notes,
                     }
 
-                    with api_request("update_labeled_session", method="POST", data=api_data, id_token=id_token) as r:
+                    with api_request("update_labeled_session", method="POST", json=api_data, id_token=id_token) as r:
                         if r.status_code == 200 and r.json().get("message") == "Success":
                             success_count += 1
                         else:
@@ -1625,7 +1628,7 @@ def update_labeled_session_endpoint(dataset_id):
                     return jsonify({"success": False, "message": "Score must be a valid number"}), 400
 
             # Call the API to update the labeled session
-            with api_request("update_labeled_session", method="POST", data=api_data, id_token=id_token) as r:
+            with api_request("update_labeled_session", method="POST", json=api_data, id_token=id_token) as r:
                 if r.status_code == 200:
                     result = r.json()
                     if result.get("message") == "Success":
@@ -1658,7 +1661,7 @@ def input_generator():
         prompt = data["prompt"]
 
         # Call the FastAPI input_generator endpoint
-        with api_request("input_generator", method="POST", data={"prompt": prompt, "user": user}, id_token=id_token) as r:
+        with api_request("input_generator", method="POST", json={"prompt": prompt, "user": user}, id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
 

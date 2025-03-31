@@ -100,6 +100,7 @@ def api_request(
     endpoint,
     method="POST",
     id_token=None,
+    json=None,
     data=None,
     files=None,
     params=None,
@@ -112,10 +113,10 @@ def api_request(
     url = f"{api_url}/{endpoint}"
     logger.info("Making %s request to /%s", method, endpoint)
     if method == "GET":
-        return requests.get(url, headers=headers, params=data, timeout=timeout, stream=stream)
-    elif method == "DELETE":
-        return requests.delete(url, headers=headers, json=data, timeout=timeout, stream=stream)
-    return requests.post(url, headers=headers, json=data, files=files, params=params, timeout=timeout, stream=stream)
+        return requests.get(url, headers=headers, data=data, json=json, params=params, timeout=timeout, stream=stream)
+    if method == "DELETE":
+        return requests.delete(url, headers=headers, data=data, json=json, params=params, timeout=timeout, stream=stream)
+    return requests.post(url, headers=headers, data=data, json=json, files=files, params=params, timeout=timeout, stream=stream)
 
 
 def upload_files(files: list[FileStorage], id_token: str, session_id: str) -> dict | None:
@@ -343,12 +344,12 @@ def organize_sources(new_sources):
 def fetch_sessions_api(user, id_token) -> list[dict]:
     sessions = []
     try:
-        with api_request("fetch_sessions", method="POST", data={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
+        with api_request("fetch_sessions", method="POST", json={"firebase_uid": user["firebase_uid"], "user": user}, id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "sessions" in response_data:
                     sessions = response_data["sessions"]
-                    logger.info(f"Fetched {len(sessions)} sessions for user")
+                    logger.info("Fetched %s sessions for user", len(sessions))
     except Exception:
         logger.exception("Failed to fetch sessions for user")
     return sessions

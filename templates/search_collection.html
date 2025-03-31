@@ -148,7 +148,11 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data["message"] == "Success") {
-                        document.getElementById('resource-count').innerHTML = `There are currently ${data["resource_count"].toLocaleString()} resources indexed.`;
+                        let resourceDlg = `There are currently ${data["resource_count"].toLocaleString()} excerpts indexed.`;
+                        if (data["resource_count"] == 1) {
+                            resourceDlg = "There is currently 1 excerpt indexed.";
+                        }
+                        document.getElementById('resource-count').innerHTML = resourceDlg;
                         document.getElementById('searchButton').disabled = data["resource_count"] > 0 ? false : true;
                     } else {
                         document.getElementById('resource-count').innerHTML = `Unable to index resources.`;

@@ -70,6 +70,28 @@ document.addEventListener('DOMContentLoaded', function() {
         checkbox.addEventListener('change', handleCheckboxes);
     });
     
+    // Select All button
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', function() {
+            document.querySelectorAll('.resource-checkbox').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+            handleCheckboxes();
+        });
+    }
+    
+    // Deselect All button
+    const deselectAllBtn = document.getElementById('deselectAllBtn');
+    if (deselectAllBtn) {
+        deselectAllBtn.addEventListener('click', function() {
+            document.querySelectorAll('.resource-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            handleCheckboxes();
+        });
+    }
+    
     // Extract collection name from URL path
     const collectionId = window.location.pathname.split('/').pop();
     
@@ -78,7 +100,11 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data["message"] == "Success") {
-                document.getElementById('resource-count').innerHTML = `There are currently ${data["resource_count"].toLocaleString()} resources indexed.`;
+                let resourceDlg = `There are currently ${data["resource_count"].toLocaleString()} excerpts indexed.`;
+                if (data["resource_count"] == 1) {
+                    resourceDlg = "There is currently 1 excerpt indexed.";
+                }
+                document.getElementById('resource-count').innerHTML = resourceDlg;
                 applyButton.disabled = data["resource_count"] > 0 ? false : true;
                 clearButton.disabled = data["resource_count"] > 0 ? false : true;
             } else {
