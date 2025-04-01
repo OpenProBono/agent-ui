@@ -231,7 +231,7 @@
                 messageDiv.textContent = 'Login successful!';
         
                 const user = userCredential.user;
-                const idToken = await user.getIdToken();
+                const idToken = await user.getIdToken(true);
                 const firebaseUid = user.uid;
 
                 await fetch('/login', {
