@@ -18,4 +18,4 @@ COPY app_helper.py /api/app_helper.py
 
 COPY static /api/static
 
-CMD gunicorn -t 120 app:app --port=$PORT --host=0.0.0.0
+CMD gunicorn -t 120 -b 0.0.0.0:$PORT app:app
