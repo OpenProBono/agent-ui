@@ -2,12 +2,14 @@
 <div class="sidebar">
     <h5 class="text-center mb-3">OpenProBono</h5>
     <!-- <a href="/dashboard" id="dashboard-link">Dashboard</a> -->
+     <!-- <a href="/users" id="users-link">Users</a> -->
     <a href="/agents" id="agents-link">My Agents</a>
     <!-- <a href="/resources" id="resources-link">Resources</a> -->
-    <!-- <a href="/users" id="users-link">Users</a> -->
     <a href="/sessions-page" id="sessions-link">My Sessions</a>
-    <a href="/create-eval-dataset" id="create-eval-link">Create Eval Dataset</a>
-    <a href="/eval-datasets" id="evals-link">View My Eval Runs</a>
+    <a href="/input-datasets" id="input-datasets-link">Input Datasets</a>
+    <a href="/create-new-run" id="create-eval-link">Create Eval Dataset</a>
+    <a href="/runs" id="evals-link">View My Eval Runs</a>
+    <!-- <a href="/jobs" id="jobs-link">Jobs</a> -->
     <a href="/labeled-eval-datasets" id="labeled-evals-link">Labeled Evals</a>
 </div>
 
@@ -33,13 +35,17 @@
             document.getElementById('users-link').classList.add('active');
         } else if (currentPath.includes('/sessions-page') || currentPath.includes('/session/')) {
             document.getElementById('sessions-link').classList.add('active');
-        } else if (currentPath.includes('/create-eval-dataset')) {
+        } else if (currentPath.includes('/create-new-run')) {
             document.getElementById('create-eval-link').classList.add('active');
         } else if (currentPath.includes('/labeled-eval-datasets') || currentPath.includes('/label-eval-dataset') || 
                   currentPath.includes('/view-labeled-dataset')) {
             document.getElementById('labeled-evals-link').classList.add('active');
         } else if (currentPath.includes('/eval-dataset') || currentPath.includes('/eval-datasets')) {
             document.getElementById('evals-link').classList.add('active');
+        } else if (currentPath.includes('/input-datasets')) {
+            document.getElementById('input-datasets-link').classList.add('active');
+        } else if (currentPath.includes('/jobs')) {
+            document.getElementById('jobs-link').classList.add('active');
         }
     });
 </script> 

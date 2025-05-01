@@ -102,6 +102,9 @@
                                 <option value="serpapi" {{ "selected" if tool.method == "serpapi" else "" }}>serpapi</option>
                                 <option value="google" {{ "selected" if tool.method == "google" else "" }}>google</option>
                                 <option value="courtlistener" {{ "selected" if tool.method == "courtlistener" else "" }}>courtlistener</option>
+                                <option value="scrape_website" {{ "selected" if tool.method == "scrape_website" else "" }}>Access URL</option>
+                                <option value="housing_violations_nyc" {{ "selected" if tool.method == "housing_violations_nyc" else "" }}>NYC Housing Violations</option>
+                                <option value="nyc_geocode" {{ "selected" if tool.method == "nyc_geocode" else "" }}>NYC Geocode</option>
                             </select>
                         </div>
                         <div class="form-group my-2">
@@ -217,6 +220,9 @@
                         <option value="serpapi" ${method === 'serpapi' ? 'selected' : ''}>serpapi</option>
                         <option value="google" ${method === 'google' ? 'selected' : ''}>google</option>
                         <option value="courtlistener" ${method === 'courtlistener' ? 'selected' : ''}>courtlistener</option>
+                        <option value="scrape_website" ${method === 'scrape_website' ? 'selected' : ''}>Access URL</option>
+                        <option value="housing_violations_nyc" ${method === 'housing_violations_nyc' ? 'selected' : ''}>NYC Housing Violations</option>
+                        <option value="nyc_geocode" ${method === 'nyc_geocode' ? 'selected' : ''}>NYC Geocode</option>
                     </select>
                 </div>
                 <div class="form-group my-2">

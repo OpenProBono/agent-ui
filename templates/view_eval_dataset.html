@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}Evaluation Dataset: {{ dataset.name }}{% endblock %}
+{% block title %}Evaluation Run: {{ run.name }}{% endblock %}
 
-{% block header_title %}Evaluation Dataset: {{ dataset.name }}{% endblock %}
+{% block header_title %}Evaluation Run: {{ run.name }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>{{ dataset.name }}</h1>
+        <h1>{{ run.name }}</h1>
         <div>
             <button id="refresh-btn" class="btn btn-outline-primary me-2">
                 <i class="fas fa-sync-alt"></i> Refresh Results
             </button>
-            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length %}
-            {% set completed_count = dataset.sessions|default([])|length %}
+            {% set total_expected = run.inputs|length * run.bot_ids|length %}
+            {% set completed_count = run.sessions|default([])|length %}
             {% set progress_percent = (completed_count / total_expected * 100) if total_expected > 0 else 0 %}
-            {% if progress_percent == 100 %}
-                <a href="/label-eval-dataset/{{ dataset.id }}" class="btn btn-success me-2">
+            {% if run.status == 'COMPLETED' or progress_percent == 100 %}
+                <a href="/label-eval-run/{{ run.id }}" class="btn btn-success me-2">
                     <i class="fas fa-tag"></i> Label Responses
                 </a>
             {% endif %}
-            <a href="/eval-datasets" class="btn btn-secondary">Back to Datasets</a>
+            <a href="/eval-runs" class="btn btn-secondary">Back to Runs</a>
         </div>
     </div>
     
@@ -34,26 +34,27 @@
     
     <div class="card mb-4">
         <div class="card-body">
-            {% if dataset.description %}
-                <p><strong>Description:</strong> {{ dataset.description }}</p>
+            {% if run.description %}
+                <p><strong>Description:</strong> {{ run.description }}</p>
             {% endif %}
-            <p><strong>Inputs:</strong> {{ dataset.inputs|length }}</p>
-            <p><strong>Bots:</strong> {{ dataset.bot_ids|length }}</p>
-            {% if dataset.created_at %}
-                <p><strong>Created:</strong> {{ dataset.created_at }}</p>
+            <p><strong>Inputs:</strong> {{ run.inputs|length }}</p>
+            <p><strong>Bots:</strong> {{ run.bot_ids|length }}</p>
+            {% if run.created_at %}
+                <p><strong>Created:</strong> {{ run.created_at }}</p>
             {% endif %}
+            <p><strong>Status:</strong> {{ run.status }}</p>
             
             <!-- Progress indicator -->
-            {% set total_expected = dataset.inputs|length * dataset.bot_ids|length %}
-            {% set completed_count = dataset.sessions|default([])|length %}
+            {% set total_expected = run.inputs|length * run.bot_ids|length %}
+            {% set completed_count = run.sessions|default([])|length %}
             {% set progress_percent = (completed_count / total_expected * 100) if total_expected > 0 else 0 %}
             
             <div class="mt-3">
                 <h5>Evaluation Progress:</h5>
                 <div class="progress" style="height: 25px;">
                     {% set progress_percent = (completed_count / total_expected * 100) if total_expected > 0 else 0 %}
-                    <div class="progress-bar {% if progress_percent < 100 %}progress-bar-striped progress-bar-animated{% endif %}" 
-                         id="main-progress-bar" data-progress="{{ progress_percent|int }}">
+                    <div class="progress-bar {% if run.status == 'PENDING' or run.status == 'RUNNING' %}progress-bar-striped progress-bar-animated{% endif %}" 
+                         id="main-progress-bar" data-progress="{{ progress_percent|int }}" data-status="{{ run.status }}">
                         {{ completed_count }} / {{ total_expected }} ({{ progress_percent|int }}%)
                     </div>
                 </div>
@@ -61,19 +62,23 @@
                     document.getElementById('main-progress-bar').style.width = '{{ progress_percent }}%';
                 </script>
                 
-                {% if progress_percent < 100 %}
+                {% if run.status == 'PENDING' or run.status == 'RUNNING' %}
                     <div class="alert alert-info mt-2">
                         <i class="fas fa-spinner fa-spin"></i> Evaluation in progress. Results will appear as they become available. 
                         <button id="auto-refresh-toggle" class="btn btn-sm btn-outline-primary ms-2">
                             Enable Auto-Refresh (30s)
                         </button>
                     </div>
-                {% else %}
+                {% elif run.status == 'COMPLETED' %}
                     <div class="alert alert-success mt-2">
                         <i class="fas fa-check-circle"></i> Evaluation complete! All results are available.
-                        <a href="/label-eval-dataset/{{ dataset.id }}" class="btn btn-sm btn-success ms-2">
+                        <a href="/label-eval-run/{{ run.id }}" class="btn btn-sm btn-success ms-2">
                             <i class="fas fa-tag"></i> Label Responses
                         </a>
+                    </div>
+                {% elif run.status == 'FAILED' %}
+                    <div class="alert alert-danger mt-2">
+                        <i class="fas fa-exclamation-triangle"></i> Evaluation failed. Please check the logs or try again.
                     </div>
                 {% endif %}
             </div>
@@ -83,9 +88,9 @@
     <div class="mb-4">
         <h2>Evaluation Results</h2>
         
-        {% if dataset.sessions and dataset.sessions|length > 0 %}
+        {% if run.sessions and run.sessions|length > 0 %}
             <div class="accordion" id="inputsAccordion">
-                {% for input in dataset.inputs %}
+                {% for input in run.inputs %}
                     {% set i = loop.index0 %}
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="heading{{ i }}">
@@ -106,7 +111,7 @@
                                 
                                 <h5>Responses:</h5>
                                 <div class="row">
-                                    {% for bot_id in dataset.bot_ids %}
+                                    {% for bot_id in run.bot_ids %}
                                         <div class="col-md-6 mb-3">
                                             <div class="card h-100">
                                                 <div class="card-header">
@@ -114,7 +119,7 @@
                                                     {% if bot_id in bots %}
                                                         {% set bot_name = bots[bot_id].name %}
                                                     {% else %}
-                                                        {% for session_id, session in dataset.sessions.items() %}
+                                                        {% for session in run.sessions %}
                                                             {% if session.bot_id == bot_id and session.bot_name is defined %}
                                                                 {% set bot_name = session.bot_name %}
                                                             {% endif %}
@@ -125,7 +130,7 @@
                                                 <div class="card-body">
                                                     <div class="response-container">
                                                         {% set found_response = false %}
-                                                        {% for session_id, session in dataset.sessions.items() %}
+                                                        {% for session in run.sessions %}
                                                             {% if session.bot_id == bot_id and session.input_idx == i %}
                                                                 <div class="response-content">
                                                                     {{ session.output_text|safe }}
@@ -161,7 +166,7 @@
                     </div>
                     <div>
                         <h5 class="mb-1">Evaluation in progress</h5>
-                        <p class="mb-0">The system is processing your evaluation dataset. This may take several minutes depending on the number of inputs and bots.</p>
+                        <p class="mb-0">The system is processing your evaluation run. This may take several minutes depending on the number of inputs and bots.</p>
                         <p class="mb-0">Results will appear here as they become available. You can refresh this page to check for updates.</p>
                     </div>
                 </div>
@@ -225,9 +230,9 @@
             });
         }
         
-        // If the progress is not 100%, show a notification when the user tries to leave
+        // If the run is not completed, show a notification when the user tries to leave
         const progressBar = document.getElementById('main-progress-bar');
-        if (progressBar && progressBar.getAttribute('data-progress') < 100) {
+        if (progressBar && progressBar.getAttribute('data-status') !== 'COMPLETED') {
             window.addEventListener('beforeunload', function(e) {
                 // Only show the confirmation if auto-refresh is not enabled
                 if (!autoRefreshToggle || !autoRefreshToggle.classList.contains('btn-primary')) {

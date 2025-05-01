@@ -1,6 +1,7 @@
 import datetime
 import os
 import time
+import json
 from json import dumps, loads
 from typing import List
 
@@ -30,6 +31,19 @@ from app_helper import (
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
+# Custom template filters
+@app.template_filter('datetime')
+def format_datetime(value):
+    """Format a datetime string to a more readable format."""
+    if not value:
+        return ""
+    try:
+        # Try to parse ISO format
+        dt = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+    except (ValueError, AttributeError):
+        # Fall back to returning the original value
+        return value
 
 @app.route("/")
 @app.route("/dashboard")
@@ -918,8 +932,8 @@ def export_sessions():
         logger.exception("Export sessions endpoint error.")
         return jsonify({"error": "Failed to export sessions"}), 500
 
-@app.route("/eval-datasets", methods=["GET"])
-def eval_datasets():
+@app.route("/runs", methods=["GET"])
+def runs_for_user():
     """Page to view all evaluation datasets."""
     logger.info("Eval datasets endpoint called.")
 
@@ -933,22 +947,23 @@ def eval_datasets():
     # Fetch all evaluation datasets for this user
     datasets = []
     try:
-        with api_request("get_user_datasets", method="GET", id_token=id_token) as r:
+        with api_request("get_user_runs", method="GET", id_token=id_token) as r:
             if r.status_code == 200:
                 response_data = r.json()
-                if response_data.get("message") == "Success" and "datasets" in response_data:
-                    datasets = response_data["datasets"]
-                    logger.info(f"Fetched {len(datasets)} evaluation datasets for user")
+                logger.info(f"Fetched runs: {response_data}")
+                if response_data.get("message") == "Success" and "runs" in response_data:
+                    datasets = response_data["runs"]
+                    logger.info(f"Fetched {len(datasets)} runs for user")
     except Exception:
         logger.exception("Failed to fetch evaluation datasets for user.")
 
-    return render_template("eval_datasets.html", user=user, datasets=datasets)
+    return render_template("view_runs.html", user=user, runs=datasets)
 
 
-@app.route("/create-eval-dataset", methods=["GET", "POST"])
-def create_eval_dataset():
-    """Page to create a new evaluation dataset."""
-    logger.info("Create eval dataset endpoint called.")
+@app.route("/create-new-run", methods=["GET", "POST"])
+def create_new_run():
+    """Page to create a new run."""
+    logger.info("Create new run called.")
 
     # Get the user's ID token from the session
     id_token = session.get("id_token")
@@ -969,50 +984,76 @@ def create_eval_dataset():
                         logger.info("Fetched %s bots for eval dataset creation", len(bots))
         except Exception:
             logger.exception("Failed to fetch bots for eval dataset creation.")
+        
+        # Get all input datasets for selection
+        input_datasets = {}
+        selected_input_dataset_id = request.args.get("input_dataset_id", "")
+        
+        try:
+            with api_request("input_datasets", method="GET", id_token=id_token) as r:
+                if r.status_code == 200:
+                    response_data = r.json()
+                    if response_data.get("message") == "Success" and "datasets" in response_data:
+                        input_datasets = response_data["datasets"]
+                        logger.info("Fetched %s input datasets for eval dataset creation", len(input_datasets))
+        except Exception:
+            logger.exception("Failed to fetch input datasets for eval dataset creation.")
 
-        return render_template("create_eval_dataset.html", user=user, bots=bots)
+        return render_template("create_new_run.html", user=user, bots=bots, 
+                               input_datasets=input_datasets, 
+                               selected_input_dataset_id=selected_input_dataset_id)
 
     # Handle POST request to create a new dataset
     try:
         # Get form data
         name = request.form.get("name")
         description = request.form.get("description", "")
-        inputs_text = request.form.get("inputs", "")
+        input_dataset_id = request.form.get("input_dataset_id")
         bot_ids = request.form.getlist("bot_ids")
 
-        # Process inputs (split by newlines and remove empty lines)
-        inputs = [line.strip() for line in inputs_text.split("\n") if line.strip()]
-
         # Validate required fields
-        if not name or not inputs or not bot_ids:
-            flash("Please provide a name, at least one input, and select at least one bot.", "error")
-            return redirect("/create-eval-dataset")
+        if not name or not input_dataset_id or not bot_ids:
+            flash("Please provide a name, select an input dataset, and select at least one bot.", "error")
+            return redirect("/create-new-run")
 
-        # Create dataset object
-        dataset_data = {
+        # The FastAPI endpoint expects query parameters and a JSON body with specific fields
+        query_params = {
+            # "name": name,
+            # "description": description,
+            # "input_dataset_id": input_dataset_id,
+        }
+        
+        # Create the JSON body with both required fields
+        body_data = {
+            "bot_ids": bot_ids,
             "name": name,
             "description": description,
-            "inputs": inputs,
-            "bot_ids": bot_ids,
-            "user": user
+            "input_dataset_id": input_dataset_id,
+            "user": user,
         }
 
         # Call API to create the dataset and run evaluations
-        with api_request("run_eval_dataset", method="POST", data=dataset_data, id_token=id_token) as r:
+        with api_request("new_run_from_input_dataset", method="POST", params=query_params, data=body_data, id_token=id_token) as r:
+            if r.status_code == 422:
+                error_details = r.json().get("detail", "Unknown validation error")
+                logger.error(f"Validation error from API: {error_details}")
+                flash(f"Failed to create evaluation dataset: {error_details}", "error")
+                return redirect("/create-new-run")
+            
             r.raise_for_status()
             result = r.json()
 
-            if result.get("message") == "Success" and "dataset_id" in result:
-                flash(f"Evaluation dataset '{name}' created successfully! Evaluations are running in the background.", "success")
-                return redirect(f"/eval-dataset/{result['dataset_id']}")
+            if result.get("message") == "Success" and "job_id" in result:
+                flash(f"Run '{name}' started! You'll be redirected to the  page.", "success")
+                return redirect(f"/jobs/{result['job_id']}")
             else:
-                flash(f"Failed to create evaluation dataset: {result.get('message', 'Unknown error')}", "error")
-                return redirect("/create-eval-dataset")
+                flash(f"Failed to create run: {result.get('message', 'Unknown error')}", "error")
+                return redirect("/create-new-run")
 
     except Exception as e:
         logger.exception("Error creating evaluation dataset.")
         flash(f"Error creating evaluation dataset: {e!s}", "error")
-        return redirect("/create-eval-dataset")
+        return redirect("/create-new-run")
 
 
 @app.route("/eval-dataset/<dataset_id>", methods=["GET"])
@@ -1065,42 +1106,42 @@ def view_eval_dataset(dataset_id):
 
     return redirect("/eval-datasets")
 
-@app.route("/clone-eval-dataset/<dataset_id>", methods=["GET"])
-def clone_eval_dataset(dataset_id):
-    """Clone an existing evaluation dataset."""
-    logger.info("Cloning evaluation dataset: %s", dataset_id)
-
+@app.route("/clone-run/<run_id>", methods=["GET"])
+def clone_run(run_id):
+    """Clone an existing run."""
+    logger.info("Cloning run: %s", run_id)
+    
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     if not id_token:
         return redirect("/signup")
-
+        
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
-
-    logger.info("Fetching dataset info for ID %s", dataset_id)
+    
+    logger.info("Fetching run info for ID %s", run_id)
     try:
-        with api_request(f"get_dataset_sessions/{dataset_id}", method="GET", id_token=id_token) as r:
+        with api_request(f"get_run/{run_id}", method="GET", id_token=id_token) as r:
             r.raise_for_status()
             result = r.json()
     except Exception:
-        logger.exception("Fetch dataset info failed.")
-        return jsonify({"error": "Failed to load dataset."}), 400
-
-    logger.debug("Fetched dataset info: %s", result)
-    if not result.get("dataset"):
-        logger.error("Fetch dataset info received an unexpected response.")
+        logger.exception("Fetch run info failed.")
+        return jsonify({"error": "Failed to load run."}), 400
+        
+    logger.debug("Fetched run info: %s", result)
+    if not result.get("run"):
+        logger.error("Fetch run info received an unexpected response.")
         abort(404)
-
-    dataset_data = result["dataset"]
-
+        
+    run_data = result["run"]
+    
     # Create a dataset object with the necessary fields
     dataset = {
-        "name": dataset_data.get("name", ""),
-        "description": dataset_data.get("description", ""),
-        "inputs": dataset_data.get("inputs", []),
-        "bot_ids": dataset_data.get("bot_ids", [])
+        "name": run_data.get("name", ""),
+        "description": run_data.get("description", ""),
+        "bot_ids": run_data.get("bot_ids", []),
+        "input_dataset_id": run_data.get("input_dataset_id", "")
     }
-
+    
     # Get all available bots for selection
     bots = {}
     try:
@@ -1109,11 +1150,97 @@ def clone_eval_dataset(dataset_id):
                 response_data = r.json()
                 if response_data.get("message") == "Success" and "data" in response_data:
                     bots = response_data["data"]
-                    logger.info(f"Fetched {len(bots)} bots for eval dataset creation")
+                    logger.info("Fetched %s bots for run creation", len(bots))
     except Exception:
-        logger.exception("Failed to fetch bots for eval dataset creation")
+        logger.exception("Failed to fetch bots for run creation.")
+    
+    # Get all input datasets for selection
+    input_datasets = {}
+    selected_input_dataset_id = dataset.get("input_dataset_id", "")
+    
+    try:
+        with api_request("input_datasets", method="GET", id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "datasets" in response_data:
+                    input_datasets = response_data["datasets"]
+                    logger.info("Fetched %s input datasets for run creation", len(input_datasets))
+    except Exception:
+        logger.exception("Failed to fetch input datasets for run creation.")
+        
+    return render_template("create_new_run.html", 
+                           user=user, 
+                           bots=bots, 
+                           dataset=dataset, 
+                           input_datasets=input_datasets,
+                           selected_input_dataset_id=selected_input_dataset_id)
 
-    return render_template("create_eval_dataset.html", user=user, bots=bots, dataset=dataset)
+@app.route("/eval-run/<run_id>", methods=["GET"])
+def view_run(run_id):
+    """Page to view a specific run and its outputs."""
+    logger.info(f"View run endpoint called for run ID: {run_id}")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Fetch the run details
+    try:
+        with api_request(f"get_run/{run_id}", method="GET", id_token=id_token) as r:
+            r.raise_for_status()
+            run_result = r.json()
+            if not run_result.get("run"):
+                logger.error("Fetch run info received an unexpected response.")
+                flash("Failed to load run details.", "error")
+                return redirect("/runs")
+            
+            run_data = run_result["run"]
+            
+            # Fetch run session outputs from run_session_job collection
+            with api_request(f"get_run_outputs/{run_id}", method="GET", id_token=id_token) as r2:
+                r2.raise_for_status()
+                outputs_result = r2.json()
+                
+                # Get bot information to display names
+                bots = {}
+                try:
+                    with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r3:
+                        if r3.status_code == 200:
+                            bot_response = r3.json()
+                            if bot_response.get("message") == "Success" and "data" in bot_response:
+                                bots = bot_response["data"]
+                                logger.info(f"Fetched {len(bots)} bots for run view")
+                except Exception:
+                    logger.exception("Failed to fetch bots for run view")
+                
+                # Format data for the template
+                outputs = outputs_result.get("outputs", [])
+                
+                # Organize outputs by input_idx and bot_id for easy display
+                organized_outputs = {}
+                for output in outputs:
+                    input_idx = output.get("input_idx")
+                    bot_id = output.get("bot_id")
+                    
+                    if input_idx not in organized_outputs:
+                        organized_outputs[input_idx] = {}
+                    
+                    organized_outputs[input_idx][bot_id] = output
+                
+                return render_template("view_run.html",
+                                      user=user,
+                                      run=run_data,
+                                      outputs=outputs,
+                                      organized_outputs=organized_outputs,
+                                      bots=bots)
+    except Exception as e:
+        logger.exception("Error fetching run data.")
+        flash(f"Error fetching run data: {e!s}", "error")
+
+    return redirect("/runs")
 
 @app.route("/new-label-eval-dataset/<dataset_id>", methods=["GET"])
 def new_label_eval_dataset(dataset_id):
@@ -1466,3 +1593,444 @@ def input_generator():
     except Exception as e:
         logger.exception(f"Error generating inputs: {str(e)}")
         return jsonify({"message": f"Error: {str(e)}"}), 500
+
+@app.route("/input-datasets", methods=["GET"])
+def input_datasets():
+    """Page to view all input datasets."""
+    logger.info("Input datasets endpoint called.")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Fetch all input datasets for this user
+    datasets = {}
+    try:
+        with api_request("input_datasets", method="GET", id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "datasets" in response_data:
+                    datasets = response_data["datasets"]
+                    logger.info(f"Fetched {len(datasets)} input datasets for user")
+    except Exception:
+        logger.exception("Failed to fetch input datasets for user.")
+
+    return render_template("input_datasets.html", user=user, datasets=datasets)
+
+@app.route("/input-datasets/<dataset_id>", methods=["GET"])
+def view_input_dataset(dataset_id):
+    """Get details for a specific input dataset."""
+    logger.info(f"View input dataset endpoint called for dataset ID: {dataset_id}")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({"message": "Not authenticated"}), 401
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Fetch the dataset details
+    try:
+        with api_request(f"input_datasets/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                dataset = r.json()
+                
+                # If the request is for JSON data, return the JSON response
+                if request.headers.get('Accept') == 'application/json':
+                    return jsonify(dataset)
+                
+                # Otherwise render the template for HTML view
+                if dataset.get("message") == "Success" and "dataset" in dataset:
+                    return render_template("view_input_dataset.html", user=user, dataset=dataset["dataset"])
+                else:
+                    flash(f"Failed to fetch input dataset: {dataset.get('message', 'Unknown error')}", "error")
+            else:
+                flash(f"Failed to fetch input dataset: {r.status_code}", "error")
+    except Exception as e:
+        logger.exception("Error fetching input dataset.")
+        flash(f"Error fetching input dataset: {e!s}", "error")
+
+    if request.headers.get('Accept') == 'application/json':
+        return jsonify({"message": "Failed to fetch dataset"}), 404
+    return redirect("/input-datasets")
+
+@app.route("/create-input-dataset", methods=["GET"])
+def create_input_dataset_form():
+    """Page to create a new input dataset."""
+    logger.info("Create input dataset form endpoint called.")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Check if we're editing an existing dataset
+    dataset_id = request.args.get("dataset_id")
+    dataset = None
+    
+    if dataset_id:
+        try:
+            with api_request(f"input_datasets/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+                if r.status_code == 200:
+                    response_data = r.json()
+                    if response_data.get("message") == "Success" and "dataset" in response_data:
+                        dataset = response_data["dataset"]
+                        # Ensure the dataset has an id field
+                        if "id" not in dataset:
+                            dataset["id"] = dataset_id
+        except Exception:
+            logger.exception(f"Failed to fetch input dataset {dataset_id} for editing.")
+    
+    return render_template("create_input_dataset.html", user=user, dataset=dataset)
+
+@app.route("/input-datasets", methods=["POST"])
+def create_input_dataset():
+    """Create a new input dataset."""
+    logger.info("Create input dataset endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    try:
+        # Get form data
+        name = request.form.get("name")
+        description = request.form.get("description", "")
+        inputs_text = request.form.get("inputs", "")
+
+        # Process inputs (split by newlines and remove empty lines)
+        inputs = [line.strip() for line in inputs_text.split("\n") if line.strip()]
+
+        # Validate required fields
+        if not name or not inputs:
+            flash("Please provide a name and at least one input.", "error")
+            return redirect("/create-input-dataset")
+
+        # Call API to create the dataset - send name and description as query params, inputs as body
+        params = {
+            "name": name,
+            "description": description
+        }
+        
+        # Call API with inputs as the direct body (not wrapped in a dict)
+        with api_request("input_datasets", method="POST", params=params, data=inputs, id_token=id_token) as r:
+            if r.status_code == 422:
+                error_msg = "Unprocessable entity error. The API could not process the data."
+                logger.error(f"{error_msg} Response: {r.text}")
+                flash(error_msg, "error")
+                return redirect("/create-input-dataset")
+            
+            r.raise_for_status()
+            result = r.json()
+
+            if result.get("message") == "Success" and "dataset_id" in result:
+                flash(f"Input dataset '{name}' created successfully!", "success")
+                return redirect(f"/input-datasets/{result['dataset_id']}")
+            else:
+                flash(f"Failed to create input dataset: {result.get('message', 'Unknown error')}", "error")
+                return redirect("/create-input-dataset")
+
+    except Exception as e:
+        logger.exception("Error creating input dataset.")
+        flash(f"Error creating input dataset: {e!s}", "error")
+        return redirect("/create-input-dataset")
+
+@app.route("/input-datasets/<dataset_id>/edit", methods=["GET"])
+def edit_input_dataset(dataset_id):
+    """Edit an existing input dataset."""
+    logger.info(f"Edit input dataset endpoint called for dataset ID: {dataset_id}")
+    return redirect(f"/create-input-dataset?dataset_id={dataset_id}")
+
+@app.route("/input-datasets/<dataset_id>/update", methods=["POST"])
+def update_input_dataset(dataset_id):
+    """Update an existing input dataset."""
+    logger.info(f"Update input dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+    
+    try:
+        # Get form data
+        name = request.form.get("name")
+        description = request.form.get("description", "")
+        inputs_text = request.form.get("inputs", "")
+
+        # Process inputs (split by newlines and remove empty lines)
+        inputs = [line.strip() for line in inputs_text.split("\n") if line.strip()]
+
+        # Validate required fields
+        if not name or not inputs:
+            flash("Please provide a name and at least one input.", "error")
+            return redirect(f"/input-datasets/{dataset_id}/edit")
+
+        # Send name and description as query params, inputs as body (consistent with create)
+        params = {
+            "name": name,
+            "description": description
+        }
+
+        # Call API to update the dataset
+        with api_request(f"input_datasets/{dataset_id}/update", method="POST", params=params, data=inputs, id_token=id_token) as r:
+            if r.status_code == 422:
+                error_msg = "Unprocessable entity error. The API could not process the data."
+                logger.error(f"{error_msg} Response: {r.text}")
+                flash(error_msg, "error")
+                return redirect(f"/input-datasets/{dataset_id}/edit")
+            
+            r.raise_for_status()
+            result = r.json()
+
+            if result.get("message") == "Success":
+                flash(f"Input dataset '{name}' updated successfully!", "success")
+                return redirect(f"/input-datasets/{dataset_id}")
+            else:
+                flash(f"Failed to update input dataset: {result.get('message', 'Unknown error')}", "error")
+                return redirect(f"/input-datasets/{dataset_id}/edit")
+
+    except Exception as e:
+        logger.exception("Error updating input dataset.")
+        flash(f"Error updating input dataset: {e!s}", "error")
+        return redirect(f"/input-datasets/{dataset_id}/edit")
+
+@app.route("/input-datasets/<dataset_id>/delete", methods=["POST"])
+def delete_input_dataset(dataset_id):
+    """Delete an input dataset."""
+    logger.info(f"Delete input dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+    
+    try:
+        # Call API to delete the dataset
+        with api_request(f"input_datasets/{dataset_id}", method="DELETE", data={"user": user}, id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+
+            if result.get("message") == "Success":
+                flash(f"Input dataset deleted successfully!", "success")
+            else:
+                flash(f"Failed to delete input dataset: {result.get('message', 'Unknown error')}", "error")
+    except Exception as e:
+        logger.exception("Error deleting input dataset.")
+        flash(f"Error deleting input dataset: {e!s}", "error")
+    
+    return redirect("/input-datasets")
+
+@app.route("/input-datasets/<dataset_id>/clone", methods=["GET"])
+def clone_input_dataset(dataset_id):
+    """Clone an existing input dataset."""
+    logger.info(f"Clone input dataset endpoint called for dataset ID: {dataset_id}")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+    
+    try:
+        # Call API to clone the dataset
+        with api_request(f"input_datasets/{dataset_id}/clone", method="POST", data={"user": user}, id_token=id_token) as r:
+            r.raise_for_status()
+            result = r.json()
+
+            if result.get("message") == "Success" and "dataset_id" in result:
+                flash(f"Input dataset cloned successfully!", "success")
+                return redirect(f"/input-datasets/{result['dataset_id']}/edit")
+            else:
+                flash(f"Failed to clone input dataset: {result.get('message', 'Unknown error')}", "error")
+    except Exception as e:
+        logger.exception("Error cloning input dataset.")
+        flash(f"Error cloning input dataset: {e!s}", "error")
+    
+    return redirect("/input-datasets")
+
+@app.route("/jobs", methods=["GET"])
+def jobs():
+    """Page to view all jobs."""
+    logger.info("Jobs endpoint called.")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+    
+    # Get filter parameters
+    job_type = request.args.get("job_type", "all")
+    status = request.args.get("status", "all")
+    
+    # Fetch all jobs for this user with filters
+    jobs = {}
+    try:
+        query_params = {"user": user}
+        if job_type != "all":
+            query_params["job_type"] = job_type
+        if status != "all":
+            query_params["status"] = status
+            
+        with api_request("jobs", method="GET", params=query_params, id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "jobs" in response_data:
+                    jobs = response_data["jobs"]
+                    logger.info(f"Fetched {len(jobs)} jobs for user with filters: type={job_type}, status={status}")
+    except Exception:
+        logger.exception("Failed to fetch jobs for user.")
+
+    return render_template("jobs.html", user=user, jobs=jobs, job_type=job_type, status=status)
+
+@app.route("/jobs/<job_id>", methods=["GET"])
+def view_job(job_id):
+    """Get details for a specific job."""
+    logger.info(f"View job endpoint called for job ID: {job_id}")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({"message": "Not authenticated"}), 401
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Fetch the job details
+    try:
+        with api_request(f"jobs/{job_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                job_data = r.json()
+                
+                # If the request is for JSON data, return the JSON response
+                if request.headers.get('Accept') == 'application/json':
+                    return jsonify(job_data)
+                
+                # Otherwise render the template for HTML view
+                if job_data.get("message") == "Success" and "job" in job_data:
+                    return render_template("view_job.html", user=user, job=job_data["job"])
+                else:
+                    flash(f"Failed to fetch job: {job_data.get('message', 'Unknown error')}", "error")
+            else:
+                flash(f"Failed to fetch job: {r.status_code}", "error")
+    except Exception as e:
+        logger.exception("Error fetching job.")
+        flash(f"Error fetching job: {e!s}", "error")
+
+    if request.headers.get('Accept') == 'application/json':
+        return jsonify({"message": "Failed to fetch job"}), 404
+    return redirect("/jobs")
+
+@app.route("/enhanced-eval-datasets", methods=["GET"])
+def enhanced_eval_datasets():
+    """Page to view all enhanced evaluation datasets."""
+    logger.info("Enhanced eval datasets endpoint called.")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Fetch all enhanced evaluation datasets for this user
+    datasets = {}
+    try:
+        with api_request("enhanced_eval_datasets", method="GET", id_token=id_token) as r:
+            if r.status_code == 200:
+                response_data = r.json()
+                if response_data.get("message") == "Success" and "datasets" in response_data:
+                    datasets = response_data["datasets"]
+                    logger.info(f"Fetched {len(datasets)} enhanced evaluation datasets for user")
+    except Exception:
+        logger.exception("Failed to fetch enhanced evaluation datasets for user.")
+
+    return render_template("enhanced_eval_datasets.html", user=user, datasets=datasets)
+
+@app.route("/enhanced-eval-datasets/<dataset_id>", methods=["GET"])
+def view_enhanced_eval_dataset(dataset_id):
+    """Page to view a specific enhanced evaluation dataset and compare outputs."""
+    logger.info(f"View enhanced eval dataset endpoint called for dataset ID: {dataset_id}")
+
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return redirect("/signup")
+
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+
+    # Fetch the dataset details
+    try:
+        with api_request(f"enhanced_eval_datasets/{dataset_id}", method="GET", data={"user": user}, id_token=id_token) as r:
+            if r.status_code == 200:
+                dataset = r.json()
+                if dataset.get("message") == "Success" and "dataset" in dataset:
+                    # Get all available bots to retrieve bot names
+                    bots = {}
+                    try:
+                        with api_request("view_bots", method="POST", data={"user": user}, id_token=id_token) as r:
+                            if r.status_code == 200:
+                                response_data = r.json()
+                                if response_data.get("message") == "Success" and "data" in response_data:
+                                    bots = response_data["data"]
+                    except Exception:
+                        logger.exception("Failed to fetch bots for enhanced eval dataset view")
+
+                    return render_template("view_enhanced_eval_dataset.html",
+                                         user=user,
+                                         dataset=dataset["dataset"],
+                                         bots=bots)
+                else:
+                    flash(f"Failed to fetch enhanced evaluation dataset: {dataset.get('message', 'Unknown error')}", "error")
+            else:
+                flash(f"Failed to fetch enhanced evaluation dataset: {r.status_code}", "error")
+    except Exception as e:
+        logger.exception("Error fetching enhanced evaluation dataset.")
+        flash(f"Error fetching enhanced evaluation dataset: {e!s}", "error")
+
+    return redirect("/enhanced-eval-datasets")
+
+@app.route("/api/input_generator", methods=["POST"])
+def proxy_input_generator():
+    """Proxy for the input generator API."""
+    logger.info("Input generator API endpoint called.")
+    
+    # Get the user's ID token from the session
+    id_token = session.get("id_token")
+    if not id_token:
+        return jsonify({"message": "Not authenticated"}), 401
+    
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+    
+    try:
+        # Get request data
+        request_data = request.json
+        if not request_data or "prompt" not in request_data:
+            return jsonify({"message": "Invalid request. Prompt is required."}), 400
+        
+        # Extract prompt from request data
+        prompt = request_data["prompt"]
+        
+        # Call the actual API with prompt as a query parameter
+        with api_request("input_generator", method="POST", params={"prompt": prompt}, id_token=id_token) as r:
+            r.raise_for_status()
+            return jsonify(r.json())
+    
+    except Exception as e:
+        logger.exception("Error generating inputs.")
+        return jsonify({"message": f"Error generating inputs: {str(e)}"}), 500
