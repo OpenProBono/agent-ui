@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Run Details: {{ run.name }}{% endblock %}
+
+{% block header_title %}Run Details: {{ run.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>{{ run.name }}</h1>
+        <div>
+            <button id="refresh-btn" class="btn btn-outline-primary me-2">
+                <i class="fas fa-sync-alt"></i> Refresh Results
+            </button>
+            <a href="/clone-run/{{ run.id }}" class="btn btn-primary me-2">
+                <i class="fas fa-clone"></i> Clone Run
+            </a>
+            <a href="/runs" class="btn btn-secondary">Back to Runs</a>
+        </div>
+    </div>
+    
+    <!-- Run Information Card -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    {% if run.description %}
+                        <p><strong>Description:</strong> {{ run.description }}</p>
+                    {% endif %}
+                    <p><strong>Inputs:</strong> {{ run.inputs|length }}</p>
+                    <p><strong>Bots:</strong> {{ run.bot_ids|length }}</p>
+                    {% for bot_id in run.bot_ids %}
+                        <span class="badge bg-secondary me-2 mb-2">
+                            {% if bot_id in bots %}
+                                {{ bots[bot_id].name }} ({{ bot_id }})
+                            {% else %}
+                                {{ bot_id }}
+                            {% endif %}
+                        </span>
+                    {% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <p><strong>Created:</strong> {{ run.created_at|datetime }}</p>
+                    <p><strong>Status:</strong> {{ run.status }}</p>
+                    
+                    <!-- Progress indicator -->
+                    {% set total_expected = run.inputs|length * run.bot_ids|length %}
+                    {% set completed_count = outputs|length %}
+                    {% set progress_percent = (completed_count / total_expected * 100) if total_expected > 0 else 0 %}
+                    
+                    <div class="mt-2">
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar {% if run.status == 'PENDING' or run.status == 'RUNNING' %}progress-bar-striped progress-bar-animated{% endif %}"
+                                role="progressbar"
+                                style="width: {{ progress_percent }}%;"
+                                aria-valuenow="{{ progress_percent }}"
+                                aria-valuemin="0"
+                                aria-valuemax="100">
+                                {{ completed_count }} / {{ total_expected }} ({{ progress_percent|int }}%)
+                            </div>
+                        </div>
+                        
+                        {% if run.status == 'PENDING' or run.status == 'RUNNING' %}
+                            <div class="alert alert-info mt-2">
+                                <i class="fas fa-spinner fa-spin"></i> Run in progress. Results will appear as they become available.
+                            </div>
+                        {% elif run.status == 'COMPLETED' %}
+                            <div class="alert alert-success mt-2">
+                                <i class="fas fa-check-circle"></i> Run complete!
+                            </div>
+                        {% elif run.status == 'FAILED' %}
+                            <div class="alert alert-danger mt-2">
+                                <i class="fas fa-exclamation-triangle"></i> Run failed. Please check the logs.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Section -->
+    <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2>Run Results</h2>
+            
+            {% if run.status == 'PENDING' or run.status == 'RUNNING' %}
+                <div class="alert alert-info mb-0 py-1 px-3">
+                    <i class="fas fa-info-circle"></i> Showing all available outputs. Some responses may still be pending.
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="accordion" id="runAccordion">
+            {% for i in range(run.inputs|length) %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading{{ i }}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#collapse{{ i }}" aria-expanded="false" aria-controls="collapse{{ i }}">
+                            Input #{{ i+1 }}: {{ run.inputs[i][:100] }}{% if run.inputs[i]|length > 100 %}...{% endif %}
+                        </button>
+                    </h2>
+                    <div id="collapse{{ i }}" class="accordion-collapse collapse" aria-labelledby="heading{{ i }}" data-bs-parent="#runAccordion">
+                        <div class="accordion-body">
+                            <div class="mb-3">
+                                <h5>Input Question:</h5>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <pre class="mb-0">{{ run.inputs[i] }}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <h5>Bot Responses:</h5>
+                            <div class="row">
+                                {% for bot_id in run.bot_ids %}
+                                    <div class="col-md-6 mb-3">
+                                        <div class="card h-100">
+                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                                <span>
+                                                    {% if bot_id in bots %}
+                                                        <strong>{{ bots[bot_id].name }}</strong> ({{ bot_id }})
+                                                    {% else %}
+                                                        <strong>{{ bot_id }}</strong>
+                                                    {% endif %}
+                                                </span>
+                                                
+                                                {% if organized_outputs.get(i, {}).get(bot_id) %}
+                                                    {% set output = organized_outputs.get(i, {}).get(bot_id) %}
+                                                    <span class="badge {% if output.get('error') %}bg-danger{% else %}bg-success{% endif %}">
+                                                        {% if output.get('error') %}Error{% else %}Success{% endif %}
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Pending</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="card-body">
+                                                {% if organized_outputs.get(i, {}).get(bot_id) %}
+                                                    {% set output = organized_outputs.get(i, {}).get(bot_id) %}
+                                                    {% if output.get('error') %}
+                                                        <div class="alert alert-danger">
+                                                            <strong>Error:</strong> {{ output.get('error') }}
+                                                        </div>
+                                                    {% elif output.get('output_text') %}
+                                                        <div class="response-content">
+                                                            {{ output.get('output_text')|safe }}
+                                                        </div>
+                                                        
+                                                        {% if output.get('metadata') %}
+                                                            <div class="mt-3">
+                                                                <button class="btn btn-sm btn-outline-secondary" type="button" 
+                                                                        data-bs-toggle="collapse" data-bs-target="#metadata-{{ i }}-{{ bot_id }}" 
+                                                                        aria-expanded="false" aria-controls="metadata-{{ i }}-{{ bot_id }}">
+                                                                    View Metadata
+                                                                </button>
+                                                                <div class="collapse mt-2" id="metadata-{{ i }}-{{ bot_id }}">
+                                                                    <div class="card card-body">
+                                                                        <pre class="mb-0">{{ output.get('metadata')|tojson(indent=2) }}</pre>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        {% endif %}
+                                                        
+                                                        <div class="mt-2 text-muted small">
+                                                            <p>Time: {{ output.get('elapsed_time', 0)|round(2) }}s</p>
+                                                        </div>
+                                                    {% else %}
+                                                        <div class="text-muted">
+                                                            <em>No response content available</em>
+                                                        </div>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <div class="d-flex align-items-center text-muted">
+                                                        <div class="spinner-border spinner-border-sm text-secondary me-2" role="status">
+                                                            <span class="visually-hidden">Loading...</span>
+                                                        </div>
+                                                        <em>Response pending...</em>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        
+        {% if outputs|length == 0 and run.status in ['PENDING', 'RUNNING'] %}
+            <div class="alert alert-info mt-3">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border text-primary me-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div>
+                        <h5 class="mb-1">Run in progress</h5>
+                        <p class="mb-0">The system is processing your run. This may take several minutes depending on the number of inputs and bots.</p>
+                        <p class="mb-0">Results will appear here as they become available. You can refresh this page to check for updates.</p>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Refresh button
+        const refreshBtn = document.getElementById('refresh-btn');
+        refreshBtn.addEventListener('click', function() {
+            location.reload();
+        });
+        
+        // Auto-refresh for incomplete runs
+        const runStatus = "{{ run.status }}";
+        if (runStatus === 'PENDING' || runStatus === 'RUNNING') {
+            setTimeout(function() {
+                location.reload();
+            }, 30000); // Auto-refresh every 30 seconds for incomplete runs
+        }
+        
+        // Format response content
+        document.querySelectorAll('.response-content').forEach(element => {
+            // Handle code blocks if needed
+            if (element.querySelector('pre, code')) {
+                // Already formatted
+            } else {
+                // Add basic formatting (line breaks, etc.)
+                element.innerHTML = element.innerHTML
+                    .replace(/\n/g, '<br>')
+                    .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+            }
+        });
+    });
+</script>
+{% endblock %} 

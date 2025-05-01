@@ -1,0 +1,311 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Create New Run" }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{{ "Run Input Dataset through Agents" }}</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> <strong>Note:</strong> Datasets run asynchronously. Depending on the number of inputs and bots, it may take several minutes for all results to be available.
+    </div>
+    
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="/create-new-run">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Run Name*</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ dataset.name ~ ' (Clone)' if dataset else '' }}" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="2">{{ dataset.description if dataset else '' }}</textarea>
+                    <div class="form-text">Optional: Provide a description for this run</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="input_dataset_id" class="form-label">Select Input Dataset*</label>
+                    <div class="d-flex">
+                        <select class="form-select me-2" id="input_dataset_id" name="input_dataset_id" required>
+                            <option value="" disabled {{ 'selected' if not selected_input_dataset_id else '' }}>-- Select an input dataset --</option>
+                            {% for id, dataset in input_datasets.items() %}
+                                <option value="{{ id }}" {{ 'selected' if selected_input_dataset_id == id else '' }}>
+                                    {{ dataset.name }} ({{ dataset.input_count }} inputs)
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <a href="/create-input-dataset" class="btn btn-outline-primary">Create New Input Dataset</a>
+                    </div>
+                    <div class="form-text">Select an existing input dataset or create a new one</div>
+                </div>
+
+                <div class="mb-3" id="preview-container" style="display: none;">
+                    <label class="form-label">Input Dataset Preview</label>
+                    <div class="card">
+                        <div class="card-body">
+                            <div id="preview-content">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading dataset preview...
+                                </div>
+                            </div>
+                            <a href="#" id="view-all-link" class="mt-2" style="display: none;">View all inputs</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Select Bots*</label>
+                    <div class="card">
+                        <div class="card-body">
+                            {% if bots %}
+                                <div class="row">
+                                    {% for bot_id, bot in bots.items() %}
+                                    <div class="col-md-6 mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="bot_ids" value="{{ bot_id }}" id="bot-{{ bot_id }}" 
+                                                {{ 'checked' if dataset and bot_id in dataset.bot_ids else '' }}>
+                                            <label class="form-check-label" for="bot-{{ bot_id }}">
+                                                {{ bot.name }} ({{ bot_id }})
+                                            </label>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="alert alert-warning">
+                                    No bots available. Please create a bot first.
+                                </div>
+                            {% endif %}
+                            
+                            <div class="mt-3">
+                                <label for="manual_bot_id" class="form-label">Or add a bot ID manually:</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="manual_bot_id" placeholder="Enter bot ID">
+                                    <button type="button" class="btn btn-outline-secondary" id="add_bot_btn">Add</button>
+                                </div>
+                            </div>
+                            
+                            <div id="manual_bots_container" class="mt-2">
+                                <!-- Manually added bots will appear here -->
+                                {% if dataset and dataset.bot_ids %}
+                                    {% for bot_id in dataset.bot_ids %}
+                                        {% if bot_id not in bots %}
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="bot_ids" value="{{ bot_id }}" id="bot-manual-{{ bot_id }}" checked>
+                                            <label class="form-check-label" for="bot-manual-{{ bot_id }}">
+                                                {{ bot_id }} (manually added)
+                                            </label>
+                                        </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="/eval-datasets" class="btn btn-secondary me-md-2">Cancel</a>
+                    <button type="submit" class="btn btn-primary" id="submit-btn">{{ "Clone" if dataset else "Create" }} Dataset</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Input Preview Modal -->
+<div class="modal fade" id="inputPreviewModal" tabindex="-1" aria-labelledby="inputPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="inputPreviewModalLabel">Input Dataset Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-preview-content">
+                    <div class="alert alert-info">
+                        <i class="fas fa-spinner fa-spin"></i> Loading all inputs...
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const inputDatasetSelect = document.getElementById('input_dataset_id');
+        const previewContainer = document.getElementById('preview-container');
+        const previewContent = document.getElementById('preview-content');
+        const viewAllLink = document.getElementById('view-all-link');
+        const modalPreviewContent = document.getElementById('modal-preview-content');
+        const form = document.querySelector('form');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        // Function to load dataset preview
+        async function loadDatasetPreview(datasetId, fullPreview = false) {
+            try {
+                const response = await fetch(`/input-datasets/${datasetId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to load dataset preview');
+                }
+                
+                const data = await response.json();
+                
+                if (data.message === 'Success' && data.dataset && data.dataset.inputs) {
+                    const inputs = data.dataset.inputs;
+                    const container = fullPreview ? modalPreviewContent : previewContent;
+                    
+                    // Limit preview to 5 items unless full preview
+                    const displayInputs = fullPreview ? inputs : inputs.slice(0, 5);
+                    const inputsList = document.createElement('ol');
+                    inputsList.className = 'list-group list-group-numbered';
+                    
+                    displayInputs.forEach((input) => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item';
+                        li.textContent = input;
+                        inputsList.appendChild(li);
+                    });
+                    
+                    container.innerHTML = '';
+                    container.appendChild(inputsList);
+                    
+                    // Show "View all" link if there are more than 5 inputs
+                    if (!fullPreview && inputs.length > 5) {
+                        viewAllLink.style.display = 'block';
+                        viewAllLink.textContent = `View all ${inputs.length} inputs`;
+                        viewAllLink.dataset.datasetId = datasetId;
+                    } else {
+                        viewAllLink.style.display = 'none';
+                    }
+                } else {
+                    throw new Error('Invalid dataset data');
+                }
+            } catch (error) {
+                const container = fullPreview ? modalPreviewContent : previewContent;
+                container.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // Load preview when dataset is selected
+        inputDatasetSelect.addEventListener('change', function() {
+            const datasetId = this.value;
+            if (datasetId) {
+                previewContainer.style.display = 'block';
+                loadDatasetPreview(datasetId);
+            } else {
+                previewContainer.style.display = 'none';
+            }
+        });
+        
+        // Show full preview when "View all" is clicked
+        viewAllLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            const datasetId = this.dataset.datasetId;
+            if (datasetId) {
+                loadDatasetPreview(datasetId, true);
+                const modal = new bootstrap.Modal(document.getElementById('inputPreviewModal'));
+                modal.show();
+            }
+        });
+        
+        // Load preview for pre-selected dataset
+        if (inputDatasetSelect.value) {
+            previewContainer.style.display = 'block';
+            loadDatasetPreview(inputDatasetSelect.value);
+        }
+        
+        // Handle manually adding bot IDs
+        const addBotBtn = document.getElementById('add_bot_btn');
+        const manualBotIdInput = document.getElementById('manual_bot_id');
+        const manualBotsContainer = document.getElementById('manual_bots_container');
+        
+        addBotBtn.addEventListener('click', function() {
+            const botId = manualBotIdInput.value.trim();
+            if (botId) {
+                // Check if this bot ID is already in the list
+                const existingInput = document.querySelector(`input[name="bot_ids"][value="${botId}"]`);
+                if (existingInput) {
+                    existingInput.checked = true;
+                    manualBotIdInput.value = '';
+                    return;
+                }
+                
+                // Create a new checkbox for this bot ID
+                const div = document.createElement('div');
+                div.className = 'form-check';
+                div.innerHTML = `
+                    <input class="form-check-input" type="checkbox" name="bot_ids" value="${botId}" id="bot-manual-${botId}" checked>
+                    <label class="form-check-label" for="bot-manual-${botId}">
+                        ${botId} (manually added)
+                    </label>
+                `;
+                manualBotsContainer.appendChild(div);
+                manualBotIdInput.value = '';
+            }
+        });
+        
+        // Allow pressing Enter to add a bot
+        manualBotIdInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addBotBtn.click();
+            }
+        });
+        
+        // Show loading state when form is submitted
+        form.addEventListener('submit', function(e) {
+            // Validation: Check if an input dataset is selected
+            if (!inputDatasetSelect.value) {
+                e.preventDefault();
+                alert('Please select an input dataset');
+                return;
+            }
+            
+            // Validation: Check if at least one bot is selected
+            const selectedBots = document.querySelectorAll('input[name="bot_ids"]:checked');
+            if (selectedBots.length === 0) {
+                e.preventDefault();
+                alert('Please select at least one bot');
+                return;
+            }
+            
+            // Show loading state
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Creating dataset...';
+            
+            // Add a loading message
+            const loadingMsg = document.createElement('div');
+            loadingMsg.className = 'alert alert-warning mt-3';
+            loadingMsg.innerHTML = `
+                <p><strong>Running with selected input dataset and ${selectedBots.length} bots.</strong></p>
+                <p>This may take several minutes to complete. You'll be redirected to the jobs page once the run is queued.</p>
+            `;
+            form.appendChild(loadingMsg);
+        });
+    });
+</script>
+{% endblock %} 

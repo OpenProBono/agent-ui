@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Jobs</h1>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Filter Jobs</h5>
+            </div>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="/jobs" class="row g-3">
+                <div class="col-md-5">
+                    <label for="job_type" class="form-label">Job Type</label>
+                    <select class="form-select" id="job_type" name="job_type">
+                        <option value="all" {% if job_type == 'all' %}selected{% endif %}>All Types</option>
+                        <option value="input_generation" {% if job_type == 'input_generation' %}selected{% endif %}>Input Generation</option>
+                        <option value="evaluation" {% if job_type == 'evaluation' %}selected{% endif %}>Evaluation</option>
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label for="status" class="form-label">Status</label>
+                    <select class="form-select" id="status" name="status">
+                        <option value="all" {% if status == 'all' %}selected{% endif %}>All Statuses</option>
+                        <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="running" {% if status == 'running' %}selected{% endif %}>Running</option>
+                        <option value="completed" {% if status == 'completed' %}selected{% endif %}>Completed</option>
+                        <option value="failed" {% if status == 'failed' %}selected{% endif %}>Failed</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Apply Filters</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    {% if jobs %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Your Jobs</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Created</th>
+                                <th>Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for job_id, job in jobs.items() %}
+                                <tr>
+                                    <td>{{ job_id[:8] }}...</td>
+                                    <td>
+                                        {% if job.type == 'input_generation' %}
+                                            <span class="badge bg-info text-dark">Input Generation</span>
+                                        {% elif job.type == 'evaluation' %}
+                                            <span class="badge bg-primary">Evaluation</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ job.type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if job.status == 'pending' %}
+                                            <span class="badge bg-warning text-dark">Pending</span>
+                                        {% elif job.status == 'running' %}
+                                            <span class="badge bg-info text-dark">Running</span>
+                                        {% elif job.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% elif job.status == 'failed' %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ job.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar {% if job.status == 'pending' %}bg-warning text-dark{% elif job.status == 'running' %}bg-info{% elif job.status == 'completed' %}bg-success{% elif job.status == 'failed' %}bg-danger{% endif %}"
+                                                role="progressbar" 
+                                                style="width: {{ job.progress }}%;" 
+                                                aria-valuenow="{{ job.progress }}" 
+                                                aria-valuemin="0" 
+                                                aria-valuemax="100">
+                                                {{ job.progress | round(0) }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>{{ job.created_at | datetime }}</td>
+                                    <td>{{ job.updated_at | datetime }}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a href="/jobs/{{ job_id }}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-eye"></i> View
+                                            </a>
+                                            {% if job.id job.status == 'completed' %}
+                                                {% if job.type == 'input_generation' %}
+                                                    <a href="/input-datasets/{{ job.id }}" class="btn btn-sm btn-outline-success">
+                                                        <i class="fas fa-file-alt"></i> Result
+                                                    </a>
+                                                {% elif job.type == 'evaluation' %}
+                                                    <a href="/enhanced-eval-datasets/{{ job.id }}" class="btn btn-sm btn-outline-success">
+                                                        <i class="fas fa-chart-bar"></i> Result
+                                                    </a>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> No jobs found matching your filters. Try changing your filter criteria or check back later.
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    // Auto-refresh the page every 30 seconds if there are running jobs
+    document.addEventListener('DOMContentLoaded', function() {
+        const hasRunningJobs = document.querySelector('.badge:contains("Running")') !== null;
+        
+        if (hasRunningJobs) {
+            setTimeout(() => {
+                window.location.reload();
+            }, 30000); // 30 seconds
+        }
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Job Details{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Job Details</h1>
+        <a href="/jobs" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Jobs
+        </a>
+    </div>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                Job ID: {{ job.id }}
+                {% if job.status == 'pending' %}
+                    <span class="badge bg-warning text-dark ms-2">Pending</span>
+                {% elif job.status == 'running' %}
+                    <span class="badge bg-info text-dark ms-2">Running</span>
+                {% elif job.status == 'completed' %}
+                    <span class="badge bg-success ms-2">Completed</span>
+                {% elif job.status == 'failed' %}
+                    <span class="badge bg-danger ms-2">Failed</span>
+                {% else %}
+                    <span class="badge bg-secondary ms-2">{{ job.status }}</span>
+                {% endif %}
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <dl class="row">
+                        <dt class="col-sm-4">Type:</dt>
+                        <dd class="col-sm-8">
+                            {% if job.type == 'input_generation' %}
+                                <span class="badge bg-info text-dark">Input Generation</span>
+                            {% elif job.type == 'evaluation' %}
+                                <span class="badge bg-primary">Evaluation</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ job.type }}</span>
+                            {% endif %}
+                        </dd>
+                        
+                        <dt class="col-sm-4">Created:</dt>
+                        <dd class="col-sm-8">{{ job.created_at | datetime }}</dd>
+                        
+                        <dt class="col-sm-4">Last Updated:</dt>
+                        <dd class="col-sm-8">{{ job.updated_at | datetime }}</dd>
+                        
+                        <dt class="col-sm-4">Progress:</dt>
+                        <dd class="col-sm-8">
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar 
+                                    {% if job.status == 'pending' %} bg-warning text-dark 
+                                    {% elif job.status == 'running' %} bg-info progress-bar-striped progress-bar-animated 
+                                    {% elif job.status == 'completed' %} bg-success 
+                                    {% elif job.status == 'failed' %} bg-danger 
+                                    {% endif %}" 
+                                    role="progressbar" 
+                                    style="width: {{ job.progress }}%;" 
+                                    aria-valuenow="{{ job.progress }}" 
+                                    aria-valuemin="0" 
+                                    aria-valuemax="100">
+                                    {{ job.progress | round(0) }}%
+                                </div>
+                            </div>
+                        </dd>
+                    </dl>
+                </div>
+                
+                <div class="col-md-6">
+                    {% if job.id %}
+                        <div class="mb-3">
+                            <strong>Result:</strong>
+                            {% if job.type == 'input_generation' %}
+                                <a href="/input-datasets/{{ job.id }}" class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-file-alt"></i> View Input Dataset
+                                </a>
+                            {% elif job.type == 'evaluation' %}
+                                <a href="/enhanced-eval-datasets/{{ job.id }}" class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-chart-bar"></i> View Eval Results
+                                </a>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                    
+                    {% if job.error_message %}
+                        <div class="mb-3">
+                            <strong>Error:</strong>
+                            <div class="alert alert-danger mt-2">
+                                {{ job.error_message }}
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    {% if job.metadata %}
+                        <div class="mb-3">
+                            <strong>Additional Information:</strong>
+                            <div class="card mt-2">
+                                <div class="card-body bg-light">
+                                    <pre class="mb-0">{{ job.metadata | tojson(indent=2) }}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if job.status == 'running' %}
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i> This job is currently running. The page will automatically refresh every 10 seconds to show the latest status.
+                </div>
+                <script>
+                    // Auto-refresh for running jobs
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 10000);
+                </script>
+            {% endif %}
+        </div>
+    </div>
+    
+    {% if job.tasks and job.tasks|length > 0 %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Tasks</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Task ID</th>
+                                <th>Type</th>
+                                <th>Status</th>
+                                <th>Progress</th>
+                                <th>Created</th>
+                                <th>Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task_id, task in job.tasks.items() %}
+                                <tr>
+                                    <td>{{ task_id[:8] }}...</td>
+                                    <td>{{ task.type }}</td>
+                                    <td>
+                                        {% if task.status == 'pending' %}
+                                            <span class="badge bg-warning text-dark">Pending</span>
+                                        {% elif task.status == 'running' %}
+                                            <span class="badge bg-info text-dark">Running</span>
+                                        {% elif task.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% elif task.status == 'failed' %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ task.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar 
+                                                {% if task.status == 'pending' %} bg-warning text-dark 
+                                                {% elif task.status == 'running' %} bg-info progress-bar-striped progress-bar-animated 
+                                                {% elif task.status == 'completed' %} bg-success 
+                                                {% elif task.status == 'failed' %} bg-danger 
+                                                {% endif %}" 
+                                                role="progressbar" 
+                                                style="width: {{ task.progress }}%;" 
+                                                aria-valuenow="{{ task.progress }}" 
+                                                aria-valuemin="0" 
+                                                aria-valuemax="100">
+                                                {{ task.progress | round(0) }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>{{ task.created_at | datetime }}</td>
+                                    <td>{{ task.updated_at | datetime }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %} 

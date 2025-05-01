@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}{{ dataset.name ~ ' - Edit' if dataset else 'Create Input Dataset' }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>{{ dataset.name ~ ' - Edit' if dataset else 'Create Input Dataset' }}</h1>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="card">
+        <div class="card-body">
+            <form id="datasetForm" action="{{ url_for('update_input_dataset', dataset_id=dataset.id) if dataset and dataset.id else url_for('create_input_dataset') }}" method="post">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Dataset Name*</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ dataset.name if dataset else '' }}" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea class="form-control" id="description" name="description" rows="2">{{ dataset.description if dataset else '' }}</textarea>
+                    <div class="form-text">Optional: Provide a description for this input dataset</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="inputs" class="form-label">Inputs*</label>
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button" class="btn btn-outline-primary" id="generate-inputs-btn" data-bs-toggle="modal" data-bs-target="#inputGeneratorModal">
+                            <i class="bi bi-magic"></i> Generate Inputs
+                        </button>
+                    </div>
+                    <textarea class="form-control" id="inputs" name="inputs" rows="10" required>{{ dataset.inputs|join('\n') if dataset and dataset.inputs else '' }}</textarea>
+                    <div class="form-text">Enter one input per line</div>
+                </div>
+                
+                <div class="d-flex justify-content-between">
+                    <button type="submit" class="btn btn-primary">{{ 'Update Dataset' if dataset else 'Create Dataset' }}</button>
+                    <a href="{{ url_for('input_datasets') }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Input Generator Modal -->
+<div class="modal fade" id="inputGeneratorModal" tabindex="-1" aria-labelledby="inputGeneratorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="inputGeneratorModalLabel">Generate Inputs</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="generatorPrompt" class="form-label">Prompt</label>
+                    <textarea class="form-control" id="generatorPrompt" rows="3"></textarea>
+                    <div class="form-text">Describe what types of inputs you want to generate.</div>
+                </div>
+                <div id="generationOutput" class="d-none">
+                    <h6>Generated Inputs:</h6>
+                    <div class="border rounded p-2 mb-3" style="max-height: 300px; overflow-y: auto;">
+                        <pre id="generatedInputs" class="mb-0"></pre>
+                    </div>
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle-fill"></i> Inputs generated successfully! Click "Use Generated Inputs" to add them to your dataset.
+                    </div>
+                </div>
+                <div id="generationError" class="alert alert-danger d-none">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <span id="errorMessage"></span>
+                </div>
+                <div id="generationLoading" class="text-center d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Generating inputs... This may take a moment.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" id="generateBtn" class="btn btn-primary">Generate</button>
+                <button type="button" id="useGeneratedBtn" class="btn btn-success d-none">Use Generated Inputs</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const generateInputsBtn = document.getElementById('generate-inputs-btn');
+        const generateBtn = document.getElementById('generateBtn');
+        const useGeneratedBtn = document.getElementById('useGeneratedBtn');
+        const generatorPrompt = document.getElementById('generatorPrompt');
+        const generationOutput = document.getElementById('generationOutput');
+        const generatedInputs = document.getElementById('generatedInputs');
+        const generationError = document.getElementById('generationError');
+        const errorMessage = document.getElementById('errorMessage');
+        const generationLoading = document.getElementById('generationLoading');
+        const inputsTextarea = document.getElementById('inputs');
+        
+        // Initialize the generator prompt with the value from the dataset if it exists
+        generateInputsBtn.addEventListener('click', function() {
+            generationOutput.classList.add('d-none');
+            generationError.classList.add('d-none');
+            useGeneratedBtn.classList.add('d-none');
+        });
+        
+        // Set up the generate button
+        generateBtn.addEventListener('click', async function() {
+            // Reset UI
+            generationOutput.classList.add('d-none');
+            generationError.classList.add('d-none');
+            useGeneratedBtn.classList.add('d-none');
+            generationLoading.classList.remove('d-none');
+            generateBtn.disabled = true;
+            
+            // Get values
+            const prompt = generatorPrompt.value.trim();
+            
+            if (!prompt) {
+                generationError.classList.remove('d-none');
+                errorMessage.textContent = 'Please enter a prompt.';
+                generationLoading.classList.add('d-none');
+                generateBtn.disabled = false;
+                return;
+            }
+            
+            // Call the API to generate inputs
+            try {
+                const response = await fetch('/api/input_generator', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + '{{ session.get("id_token", "") }}'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.inputs && data.inputs.length > 0) {
+                    // Show the generated inputs
+                    generatedInputs.textContent = data.inputs.join('\n');
+                    generationOutput.classList.remove('d-none');
+                    useGeneratedBtn.classList.remove('d-none');
+                } else {
+                    throw new Error('No inputs were generated.');
+                }
+            } catch (error) {
+                generationError.classList.remove('d-none');
+                errorMessage.textContent = `Error generating inputs: ${error.message}`;
+            } finally {
+                generationLoading.classList.add('d-none');
+                generateBtn.disabled = false;
+            }
+        });
+        
+        // Set up the use generated inputs button
+        useGeneratedBtn.addEventListener('click', function() {
+            // Update the inputs textarea
+            if (inputsTextarea.value.trim()) {
+                // If there are already inputs, add a newline before adding the new ones
+                inputsTextarea.value += '\n' + generatedInputs.textContent;
+            } else {
+                inputsTextarea.value = generatedInputs.textContent;
+            }
+            
+            // Close the modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('inputGeneratorModal'));
+            modal.hide();
+        });
+    });
+</script>
+{% endblock %} 
