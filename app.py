@@ -2213,7 +2213,8 @@ def lsnyc():
                                         "certification_by_date": violation.get("originalcertifybydate", "N/A"),
                                         "actual_cert_date": violation.get("certifieddate", "N/A"),
                                         "violation_status": violation.get("currentstatus", "N/A"),
-                                        "violation_status_date": violation.get("currentstatusdate", "N/A")
+                                        "violation_status_date": violation.get("currentstatusdate", "N/A"),
+                                        "building_id": violation.get("buildingid", violation.get("building_id", violation.get("bin", "N/A")))
                                     }
                                     results.append(result)
                                 
