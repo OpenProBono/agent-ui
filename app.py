@@ -2034,3 +2034,204 @@ def proxy_input_generator():
     except Exception as e:
         logger.exception("Error generating inputs.")
         return jsonify({"message": f"Error generating inputs: {str(e)}"}), 500
+
+
+@app.route("/lsnyc", methods=["GET", "POST"])
+def lsnyc():
+    """LSNYC page for document analysis and text input processing."""
+    logger.info("LSNYC endpoint called.")
+    
+    # This page is accessible to everyone, no authentication required
+    user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
+    id_token = session.get("id_token")
+    
+    if request.method == "POST":
+        # Handle file upload or text input processing
+        files = request.files.getlist("files")
+        text_input = request.form.get("text_input", "").strip()
+        
+        # Use the predefined bot for BBL extraction
+        bbl_extraction_bot_id = "1ab1f027-3075-4651-baad-eb34b5525c2d"
+        
+        try:
+            # Step 1: Extract BBL using the bot
+            logger.info("Step 1: Extracting BBL using bot...")
+            
+            # Initialize a new chat session with the BBL extraction bot
+            init_request_data = {
+                "message": "Initialize BBL extraction session",
+                "bot_id": bbl_extraction_bot_id,
+                "user": user
+            }
+            
+            # Call the initialize_session_chat endpoint to get a session_id
+            with api_request("initialize_session_chat", method="POST", data=init_request_data, id_token=id_token) as r:
+                r.raise_for_status()
+                init_response = r.json()
+                
+                if init_response.get("message") != "Success":
+                    return jsonify({"error": f"Failed to initialize BBL extraction session: {init_response.get('error', 'Unknown error')}"}), 500
+                
+                session_id = init_response.get("session_id")
+                if not session_id:
+                    return jsonify({"error": "No session ID returned from BBL extraction initialization"}), 500
+                
+                # Handle file uploads if present
+                if files:
+                    logger.info("Processing file uploads for BBL extraction...")
+                    
+                    # Prepare files for upload (same format as chat endpoint)
+                    files_to_upload = [
+                        ("files", (file.filename, file.stream, file.content_type))
+                        for file in files if file.filename
+                    ]
+                    
+                    if not files_to_upload:
+                        return jsonify({"error": "No valid files provided"}), 400
+                    
+                    # Upload files to the session
+                    try:
+                        with api_request(
+                            "upload_files",
+                            id_token=id_token,
+                            files=files_to_upload,
+                            params={"session_id": session_id},
+                        ) as upload_r:
+                            upload_r.raise_for_status()
+                            upload_result = upload_r.json()
+                            logger.info("Files uploaded successfully: %s", upload_result)
+                    except Exception as e:
+                        logger.exception("File upload failed.")
+                        return jsonify({"error": f"Failed to upload files: {str(e)}"}), 400
+                    
+                    # Create BBL extraction message for uploaded files
+                    file_names = [file.filename for file in files if file.filename]
+                    message = f"Please extract the tenant's address and BBL (Building Block and Lot) number from the uploaded legal documents. The files are: {', '.join(file_names)}. "
+                    
+                elif text_input:
+                    # For text input, ask the bot to extract BBL from text
+                    message = f"{text_input}"
+                else:
+                    return jsonify({"error": "No files or text input provided"}), 400
+                
+                # Send the BBL extraction message to the session
+                chat_request_data = {
+                    "session_id": session_id,
+                    "message": message,
+                    "user": user
+                }
+                
+                # Call the chat_session endpoint (non-streaming version)
+                with api_request("chat_session", method="POST", data=chat_request_data, id_token=id_token) as chat_r:
+                    chat_r.raise_for_status()
+                    chat_response = chat_r.json()
+                    
+                    logger.info(f"BBL extraction response: {chat_response}")
+                    
+                    if chat_response.get("message") == "Success":
+                        # Extract the BBL and address from the bot's response
+                        bot_output = chat_response.get("output", "").strip()
+                        
+                        # Parse the JSON response from the bot
+                        try:
+                            import json
+                            # Try to parse the bot's response as JSON
+                            if bot_output.strip().startswith('{'):
+                                response_data = json.loads(bot_output)
+                                bbl = response_data.get("bbl", "").strip()
+                                address = response_data.get("address", "").strip()
+                                
+                                if not bbl:
+                                    return jsonify({"error": "No BBL found in the bot response. Please ensure the document contains a valid BBL number."}), 400
+                                    
+                                # Validate BBL format (should be 10 digits)
+                                import re
+                                if not re.match(r'^\d{10}$', bbl):
+                                    return jsonify({"error": f"Invalid BBL format: {bbl}. BBL should be a 10-digit number."}), 400
+                                
+                                logger.info(f"Extracted BBL: {bbl}, Address: {address}")
+                            else:
+                                # Fallback: try to extract BBL from plain text response
+                                bbl_match = re.search(r'\b(\d{10})\b', bot_output)
+                                if bbl_match:
+                                    bbl = bbl_match.group(1)
+                                    address = "Not provided"
+                                    logger.info(f"Extracted BBL from text: {bbl}")
+                                else:
+                                    return jsonify({"error": f"Could not extract BBL from bot response: {bot_output}"}), 400
+                        except json.JSONDecodeError:
+                            # Fallback: try to extract BBL from plain text response
+                            import re
+                            bbl_match = re.search(r'\b(\d{10})\b', bot_output)
+                            if bbl_match:
+                                bbl = bbl_match.group(1)
+                                address = "Not provided"
+                                logger.info(f"Extracted BBL from text fallback: {bbl}")
+                            else:
+                                return jsonify({"error": f"Could not parse bot response as JSON or extract BBL: {bot_output}"}), 400
+                       
+                        # Step 2: Get housing violations using the extracted BBL
+                        logger.info(f"Step 2: Getting housing violations for BBL: {bbl}")
+                        
+                        # Call the housing_violations endpoint
+                        # FastAPI Body() with simple type expects raw string, not JSON object
+                        bbl_string = str(bbl)
+                        
+                        logger.info(f"Sending housing violations request with BBL: {bbl_string}")
+                        
+                        with api_request("housing_violations", method="POST", data=bbl_string, id_token=id_token) as housing_r:
+                            logger.info(f"Housing violations response status: {housing_r.status_code}")
+                            if housing_r.status_code == 422:
+                                logger.error(f"422 Error details: {housing_r.text}")
+                            housing_r.raise_for_status()
+                            housing_response = housing_r.json()
+                            
+                            logger.info(f"Housing violations response: {housing_response}")
+                            
+                            if housing_response.get("message") == "Success":
+                                violations = housing_response.get("violations", [])
+                                
+                                if not violations:
+                                    return jsonify({"error": f"No housing violations found for BBL: {bbl} at address: {address}"}), 404
+                                
+                                # Step 3: Map the NYC Open Data fields to the expected frontend structure
+                                results = []
+                                for violation in violations:
+                                    # Map NYC Open Data fields to our expected structure
+                                    result = {
+                                        "violation_id": str(violation.get("violationid", violation.get("id", "N/A"))),
+                                        "class": violation.get("class", "N/A"),
+                                        "order": str(violation.get("ordernumber", "N/A")),
+                                        "apt": violation.get("apartment", "N/A"),
+                                        "story": violation.get("story", "N/A"),
+                                        "reported_date": violation.get("inspectiondate", "N/A"),
+                                        "violation_description": violation.get("novdescription", "N/A"),
+                                        "nov_issued_date": violation.get("novissueddate", "N/A"),
+                                        "nov_id": str(violation.get("novid", "N/A")),
+                                        "nov_type": violation.get("novtype", "N/A"),
+                                        "correction_by_date": violation.get("originalcorrectbydate", "N/A"),
+                                        "certification_by_date": violation.get("originalcertifybydate", "N/A"),
+                                        "actual_cert_date": violation.get("certifieddate", "N/A"),
+                                        "violation_status": violation.get("currentstatus", "N/A"),
+                                        "violation_status_date": violation.get("currentstatusdate", "N/A")
+                                    }
+                                    results.append(result)
+                                
+                                return jsonify({
+                                    "success": True, 
+                                    "results": results, 
+                                    "bbl": bbl,
+                                    "address": address,
+                                    "count": len(results)
+                                })
+                            else:
+                                return jsonify({"error": f"Failed to get housing violations: {housing_response.get('message', 'Unknown error')}"}), 500
+                    else:
+                        return jsonify({"error": f"BBL extraction failed: {chat_response.get('error', 'Unknown error')}"}), 500
+            
+        except Exception as e:
+            logger.exception("Error processing LSNYC request.")
+            return jsonify({"error": f"Failed to process request: {str(e)}"}), 500
+    
+    # GET request - render the page
+    return render_template("lsnyc.html", user=user)

@@ -11,6 +11,7 @@
     <a href="/runs" id="evals-link">View My Eval Runs</a>
     <!-- <a href="/jobs" id="jobs-link">Jobs</a> -->
     <a href="/labeled-eval-datasets" id="labeled-evals-link">Labeled Evals</a>
+    <a href="/lsnyc" id="lsnyc-link">LSNYC Analyzer</a>
 </div>
 
 <script>
@@ -46,6 +47,8 @@
             document.getElementById('input-datasets-link').classList.add('active');
         } else if (currentPath.includes('/jobs')) {
             document.getElementById('jobs-link').classList.add('active');
+        } else if (currentPath.includes('/lsnyc')) {
+            document.getElementById('lsnyc-link').classList.add('active');
         }
     });
 </script> 

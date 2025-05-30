@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LSNYC Legal Document Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.png">
+    
+    <style>
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .lsnyc-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .lsnyc-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .input-section {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .file-upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            background: white;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .file-upload-area:hover {
+            border-color: #3b82f6;
+            background: #f1f5f9;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: #3b82f6;
+            background: #dbeafe;
+        }
+        
+        .file-list {
+            margin-top: 1rem;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: between;
+            padding: 0.5rem;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .results-section {
+            margin-top: 2rem;
+        }
+        
+        .results-table {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .results-table table {
+            table-layout: fixed;
+            width: 100%;
+        }
+        
+        .table th {
+            background: #f1f5f9;
+            border: none;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .table td {
+            border: none;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+        
+        .table tbody tr:hover {
+            background: #f8fafc;
+            cursor: pointer;
+        }
+        
+        .expanded-row {
+            background: #f8fafc !important;
+        }
+        
+        .expanded-content {
+            padding: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .input-tabs {
+            margin-bottom: 1rem;
+        }
+        
+        .extracted-info-section {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1rem;
+            transition: background-color 0.3s ease;
+        }
+        
+        .extracted-info-section.show {
+            display: block !important;
+        }
+        
+        .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: background-color 0.2s ease;
+        }
+        
+        .sortable-header:hover {
+            background-color: #e2e8f0 !important;
+        }
+        
+        .sort-indicator {
+            display: inline-block;
+            margin-left: 5px;
+            opacity: 0.5;
+            font-size: 0.8em;
+        }
+        
+        .sort-indicator.active {
+            opacity: 1;
+        }
+        
+        .violation-row-target-apt {
+            background-color: #e8f5e8 !important; /* Light green for target apartment */
+        }
+        
+        .violation-row-target-apt:hover {
+            background-color: #d4edda !important; /* Slightly darker green on hover */
+        }
+        
+        .violation-row-building-wide {
+            background-color: #fff3cd !important; /* Light yellow for building-wide */
+        }
+        
+        .violation-row-building-wide:hover {
+            background-color: #ffeaa7 !important; /* Slightly darker yellow on hover */
+        }
+        
+        .violation-row-other {
+            background-color: #f8f9fa !important; /* Light gray for other apartments */
+        }
+        
+        .violation-row-other:hover {
+            background-color: #e9ecef !important; /* Slightly darker gray on hover */
+        }
+        
+        /* Ensure table row colors override Bootstrap defaults */
+        .table > tbody > tr.violation-row-target-apt > td {
+            background-color: #e8f5e8 !important;
+        }
+        
+        .table > tbody > tr.violation-row-target-apt:hover > td {
+            background-color: #d4edda !important;
+        }
+        
+        .table > tbody > tr.violation-row-building-wide > td {
+            background-color: #fff3cd !important;
+        }
+        
+        .table > tbody > tr.violation-row-building-wide:hover > td {
+            background-color: #ffeaa7 !important;
+        }
+        
+        .table > tbody > tr.violation-row-other > td {
+            background-color: #f8f9fa !important;
+        }
+        
+        .table > tbody > tr.violation-row-other:hover > td {
+            background-color: #e9ecef !important;
+        }
+        
+        /* Filter button styles */
+        .filter-btn {
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.875rem;
+        }
+        
+        .filter-btn:hover {
+            border-color: #007bff;
+            color: #007bff;
+        }
+        
+        .filter-btn.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        
+        .violation-row-hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="lsnyc-container">
+        <!-- Header Section -->
+        <div class="lsnyc-header">
+            <h1 class="mb-3">
+                <i class="bi bi-shield-check me-2"></i>
+                LSNYC HPD Violation Search and Analysis
+            </h1>
+            <p class="mb-0">Upload documents or enter an address to get instant overview of HPD violations in a tenant's apartment</p>
+        </div>
+        
+        <!-- Input Section -->
+        <div class="input-section">
+            <h3 class="mb-3">
+                <i class="bi bi-upload me-2"></i>
+                Submit Your Documents or Text
+            </h3>
+            
+            <!-- Input Type Tabs -->
+            <ul class="nav nav-tabs input-tabs" id="inputTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="file-tab" data-bs-toggle="tab" data-bs-target="#file-upload" type="button" role="tab">
+                        <i class="bi bi-file-earmark-arrow-up me-1"></i>
+                        Upload Documents
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="text-tab" data-bs-toggle="tab" data-bs-target="#text-input" type="button" role="tab">
+                        <i class="bi bi-textarea-t me-1"></i>
+                        Enter Text
+                    </button>
+                </li>
+            </ul>
+            
+            <div class="tab-content mt-3" id="inputTabContent">
+                <!-- File Upload Tab -->
+                <div class="tab-pane fade show active" id="file-upload" role="tabpanel">
+                    <div class="file-upload-area" onclick="document.getElementById('file-input').click()">
+                        <i class="bi bi-cloud-upload display-4 text-muted mb-3"></i>
+                        <h5>Drop files here or click to browse</h5>
+                        <p class="text-muted">Supports PDF, DOC, DOCX, and TXT files</p>
+                        <input type="file" id="file-input" class="d-none" multiple accept=".txt,.doc,.docx,.pdf">
+                    </div>
+                    <div id="file-list" class="file-list"></div>
+                </div>
+                
+                <!-- Text Input Tab -->
+                <div class="tab-pane fade" id="text-input" role="tabpanel">
+                    <label for="text-area" class="form-label">Enter the address:</label>
+                    <textarea id="text-area" class="form-control" rows="8" placeholder="Paste the address of the property you want to analyze"></textarea>
+            </div>
+            
+            <!-- Submit Button -->
+            <div class="text-center mt-3">
+                <button id="analyze-btn" class="btn btn-primary btn-lg px-4" onclick="analyzeInput()">
+                    <i class="bi bi-search me-2"></i>
+                    Analyze
+                </button>
+            </div>
+        </div>
+        
+        <!-- Loading Spinner -->
+        <div id="loading-spinner" class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Analyzing your input...</p>
+        </div>
+        
+        <!-- Extracted Information Section -->
+        <div id="extracted-info-section" class="results-section" style="display: none;">
+            <h4 class="mb-3">
+                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                Extracted Location Information
+            </h4>
+            
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <i class="bi bi-geo-alt-fill me-1"></i>
+                                Property Address
+                            </h6>
+                            <p id="extracted-address" class="card-text fw-bold">-</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <i class="bi bi-hash me-1"></i>
+                                BBL Number
+                            </h6>
+                            <p id="extracted-bbl" class="card-text fw-bold text-primary">-</p>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            BBL (Borough, Block, Lot) uniquely identifies this property in NYC records
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div id="results-section" class="results-section" style="display: none;">
+            <h3 class="mb-3">
+                <i class="bi bi-table me-2"></i>
+                HPD Violations Results
+            </h3>
+            
+            <!-- Color Legend -->
+            <div id="results-legend" class="mb-3">
+                <div class="card">
+                    <div class="card-body py-2">
+                        <div class="row align-items-center">
+                            <div class="col-md-4">
+                                <small class="text-muted">
+                                    <i class="bi bi-palette me-1"></i>
+                                    <strong>Filter by Type:</strong>
+                                </small>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="d-flex flex-wrap gap-2">
+                                    <div class="filter-btn active" data-filter="all" onclick="filterViolations('all')">
+                                        <i class="bi bi-list me-1"></i>
+                                        Show All
+                                    </div>
+                                    <div class="filter-btn" data-filter="target-apartment" onclick="filterViolations('target-apartment')">
+                                        <div class="violation-row-target-apt d-inline-block" style="width: 15px; height: 12px; border: 1px solid #ddd; margin-right: 5px; vertical-align: middle;"></div>
+                                        Your Apartment
+                                    </div>
+                                    <div class="filter-btn" data-filter="building-wide" onclick="filterViolations('building-wide')">
+                                        <div class="violation-row-building-wide d-inline-block" style="width: 15px; height: 12px; border: 1px solid #ddd; margin-right: 5px; vertical-align: middle;"></div>
+                                        Building-Wide
+                                    </div>
+                                    <div class="filter-btn" data-filter="other-apartment" onclick="filterViolations('other-apartment')">
+                                        <div class="violation-row-other d-inline-block" style="width: 15px; height: 12px; border: 1px solid #ddd; margin-right: 5px; vertical-align: middle;"></div>
+                                        Other Apartments
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="results-table">
+                <table class="table table-hover mb-0" id="results-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 14%;" class="sortable-header" onclick="console.log('Clicked violation_id header'); sortTable('violation_id')">
+                                VIOLATION ID
+                                <span class="sort-indicator" id="sort-violation_id">↕️</span>
+                            </th>
+                            <th style="width: 7%;" class="text-center sortable-header" onclick="console.log('Clicked class header'); sortTable('class')">
+                                CLASS
+                                <span class="sort-indicator" id="sort-class">↕️</span>
+                            </th>
+                            <th style="width: 7%;" class="text-center sortable-header" onclick="console.log('Clicked order header'); sortTable('order')">
+                                ORDER
+                                <span class="sort-indicator" id="sort-order">↕️</span>
+                            </th>
+                            <th style="width: 7%;" class="text-center sortable-header" onclick="console.log('Clicked apt header'); sortTable('apt')">
+                                APT
+                                <span class="sort-indicator" id="sort-apt">↕️</span>
+                            </th>
+                            <th style="width: 9%;" class="text-center sortable-header" onclick="console.log('Clicked story header'); sortTable('story')">
+                                STORY
+                                <span class="sort-indicator" id="sort-story">↕️</span>
+                            </th>
+                            <th style="width: 14%;" class="text-center sortable-header" onclick="console.log('Clicked reported_date header'); sortTable('reported_date')">
+                                REPORTED DATE
+                                <span class="sort-indicator" id="sort-reported_date">↕️</span>
+                            </th>
+                            <th style="width: 42%;">VIOLATION DESCRIPTION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-tbody">
+                        <!-- Results will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    
+    <script>
+    let uploadedFiles = [];
+    let analysisResults = [];
+    let currentSortColumn = null;
+    let currentSortDirection = 'asc';
+    let extractedApartment = null; // Store the apartment from extracted address
+
+    // File upload handling
+    document.getElementById('file-input').addEventListener('change', function(e) {
+        handleFiles(e.target.files);
+    });
+
+    // Drag and drop handling
+    const fileUploadArea = document.querySelector('.file-upload-area');
+
+    fileUploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('dragover');
+    });
+
+    fileUploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+    });
+
+    fileUploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+    });
+
+    function handleFiles(files) {
+        const fileList = document.getElementById('file-list');
+        uploadedFiles = Array.from(files);
+        
+        fileList.innerHTML = '';
+        
+        uploadedFiles.forEach((file, index) => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <div class="d-flex align-items-center flex-grow-1">
+                    <i class="bi bi-file-earmark me-2"></i>
+                    <span>${file.name}</span>
+                    <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeFile(${index})">
+                    <i class="bi bi-x"></i>
+                </button>
+            `;
+            fileList.appendChild(fileItem);
+        });
+    }
+
+    function removeFile(index) {
+        uploadedFiles.splice(index, 1);
+        handleFiles(uploadedFiles);
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatDate(dateString) {
+        if (!dateString || dateString === 'N/A' || dateString === 'null' || dateString === null) {
+            return 'N/A';
+        }
+        
+        try {
+            // Handle various date formats
+            let date;
+            if (dateString.includes('T')) {
+                // ISO format: 2024-01-15T00:00:00
+                date = new Date(dateString);
+            } else if (dateString.includes('-')) {
+                // Date format: 2024-01-15
+                date = new Date(dateString);
+            } else {
+                // If it's already formatted or unrecognized, return as is
+                return dateString;
+            }
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                return dateString; // Return original if can't parse
+            }
+            
+            // Format as MM/DD/YYYY
+            return date.toLocaleDateString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                year: 'numeric'
+            });
+        } catch (error) {
+            return dateString; // Return original if error occurs
+        }
+    }
+
+    function analyzeInput() {
+        const activeTab = document.querySelector('.nav-link.active').id;
+        const formData = new FormData();
+        
+        if (activeTab === 'file-tab') {
+            if (uploadedFiles.length === 0) {
+                alert('Please select files to upload.');
+                return;
+            }
+            uploadedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+        } else {
+            const textInput = document.getElementById('text-area').value.trim();
+            if (!textInput) {
+                alert('Please enter some text to analyze.');
+                return;
+            }
+            formData.append('text_input', textInput);
+        }
+        
+        // Show loading spinner
+        document.getElementById('loading-spinner').style.display = 'block';
+        document.getElementById('extracted-info-section').style.display = 'none';
+        document.getElementById('extracted-info-section').classList.remove('show');
+        document.getElementById('results-section').style.display = 'none';
+        document.getElementById('analyze-btn').disabled = true;
+        
+        // Submit to server
+        fetch('/lsnyc', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('loading-spinner').style.display = 'none';
+            document.getElementById('analyze-btn').disabled = false;
+            
+            console.log('Received data:', data); // Debug log
+            
+            if (data.success) {
+                console.log('Success - BBL:', data.bbl, 'Address:', data.address); // Debug log
+                displayExtractedInfo(data.bbl, data.address, data.count);
+                displayResults(data.results);
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error occurred'));
+            }
+        })
+        .catch(error => {
+            console.error('Fetch error:', error); // Debug log
+            document.getElementById('loading-spinner').style.display = 'none';
+            document.getElementById('analyze-btn').disabled = false;
+            alert('Error: ' + error.message);
+        });
+    }
+
+    function displayExtractedInfo(bbl, address, count) {
+        console.log('displayExtractedInfo called with:', { bbl, address, count }); // Debug log
+        
+        // Extract apartment number from address if possible
+        extractedApartment = extractApartmentFromAddress(address);
+        console.log('Extracted apartment from address:', extractedApartment); // Debug log
+        
+        // Check if the element exists
+        const extractedInfoSection = document.getElementById('extracted-info-section');
+        const extractedBblElement = document.getElementById('extracted-bbl');
+        const extractedAddressElement = document.getElementById('extracted-address');
+        
+        console.log('Elements found:', { 
+            extractedInfoSection: !!extractedInfoSection, 
+            extractedBblElement: !!extractedBblElement, 
+            extractedAddressElement: !!extractedAddressElement 
+        }); // Debug log
+        
+        if (!extractedInfoSection || !extractedBblElement || !extractedAddressElement) {
+            console.error('Missing required elements for extracted info display');
+            return;
+        }
+        
+        // Update the extracted information section
+        extractedBblElement.textContent = bbl || 'Not available';
+        extractedAddressElement.textContent = address || 'Not available';
+        
+        console.log('Updated text content - BBL:', extractedBblElement.textContent, 'Address:', extractedAddressElement.textContent); // Debug log
+        
+        // Show the extracted info section
+        extractedInfoSection.style.display = 'block';
+        extractedInfoSection.classList.add('show');
+        extractedInfoSection.style.visibility = 'visible';
+        console.log('Set display to block, current display style:', extractedInfoSection.style.display); // Debug log
+        console.log('Added show class, classes:', extractedInfoSection.className); // Debug log
+        
+        // Scroll to the extracted info section
+        extractedInfoSection.scrollIntoView({ behavior: 'smooth' });
+        
+        // Add a brief highlight effect to show the new information
+        extractedInfoSection.style.backgroundColor = '#f8f9fa';
+        setTimeout(() => {
+            extractedInfoSection.style.backgroundColor = '';
+        }, 2000);
+        
+        console.log('displayExtractedInfo completed'); // Debug log
+    }
+
+    function extractApartmentFromAddress(address) {
+        if (!address || address === 'Not available' || address === 'Not provided') {
+            return null;
+        }
+        
+        const addressStr = String(address).toLowerCase();
+        
+        // Common apartment patterns: "apt 3A", "apartment 5B", "unit 2", "#4", "3rd floor", etc.
+        const patterns = [
+            /apt\.?\s*([a-z0-9]+)/i,
+            /apartment\s*([a-z0-9]+)/i,
+            /unit\s*([a-z0-9]+)/i,
+            /#\s*([a-z0-9]+)/i,
+            /(\d+[a-z]?)\s*(?:st|nd|rd|th)?\s*fl(?:oor)?/i,
+            /\b([a-z]?\d+[a-z]?)\s*$/ // Apartment at end of address
+        ];
+        
+        for (const pattern of patterns) {
+            const match = addressStr.match(pattern);
+            if (match && match[1]) {
+                const apt = match[1].toUpperCase().trim();
+                console.log(`Found apartment "${apt}" in address "${address}" using pattern:`, pattern);
+                return apt;
+            }
+        }
+        
+        console.log(`No apartment found in address: "${address}"`);
+        return null;
+    }
+
+    function displayResults(results) {
+        analysisResults = results;
+        
+        // Apply default sorting
+        const sortedResults = applyDefaultSort([...results]);
+        
+        // Reset sorting state to indicate default sort is applied
+        currentSortColumn = null;
+        currentSortDirection = 'asc';
+        updateSortIndicators('', ''); // Clear all indicators
+        
+        // Render the sorted table
+        renderTable(sortedResults);
+        
+        document.getElementById('results-section').style.display = 'block';
+    }
+
+    function toggleRowExpansion(index, currentResults = null) {
+        // Use current results if provided (for sorted tables), otherwise use original
+        const resultsToUse = currentResults || analysisResults;
+        const result = resultsToUse[index];
+        
+        const row = document.querySelector(`tr[data-index="${index}"]`);
+        const existingExpanded = row.nextElementSibling;
+        
+        if (existingExpanded && existingExpanded.classList.contains('expanded-row')) {
+            existingExpanded.remove();
+            return;
+        }
+        
+        const expandedRow = document.createElement('tr');
+        expandedRow.className = 'expanded-row';
+        expandedRow.innerHTML = `
+            <td colspan="7">
+                <div class="expanded-content">
+                    <h6><i class="bi bi-info-circle me-1"></i> Detailed Violation Information</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-2">
+                                <strong>NOV ISSUED DATE:</strong> ${formatDate(result.nov_issued_date)}
+                            </div>
+                            <div class="mb-2">
+                                <strong>NOV ID:</strong> ${result.nov_id || 'N/A'}
+                            </div>
+                            <div class="mb-2">
+                                <strong>NOV TYPE:</strong> ${result.nov_type || 'N/A'}
+                            </div>
+                            <div class="mb-2">
+                                <strong>CORRECTION BY DATE:</strong> ${formatDate(result.correction_by_date)}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-2">
+                                <strong>CERTIFICATION BY DATE:</strong> ${formatDate(result.certification_by_date)}
+                            </div>
+                            <div class="mb-2">
+                                <strong>ACTUAL CERT. DATE:</strong> ${formatDate(result.actual_cert_date)}
+                            </div>
+                            <div class="mb-2">
+                                <strong>VIOLATION STATUS:</strong> 
+                                <span class="badge bg-${result.violation_status === 'Open' ? 'danger' : result.violation_status === 'Closed' ? 'success' : 'warning'}">
+                                    ${result.violation_status || 'N/A'}
+                                </span>
+                            </div>
+                            <div class="mb-2">
+                                <strong>VIOLATION STATUS DATE:</strong> ${formatDate(result.violation_status_date)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </td>
+        `;
+        
+        row.parentNode.insertBefore(expandedRow, row.nextSibling);
+    }
+
+    function sortTable(column) {
+        console.log(`Sorting by column: ${column}, current direction: ${currentSortDirection}`); // Debug log
+        
+        // Toggle sort direction if clicking the same column
+        if (currentSortColumn === column) {
+            currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            currentSortColumn = column;
+            currentSortDirection = 'asc';
+        }
+        
+        console.log(`New sort direction: ${currentSortDirection}`); // Debug log
+        
+        // Update sort indicators
+        updateSortIndicators(column, currentSortDirection);
+        
+        // Sort the results
+        const sortedResults = [...analysisResults].sort((a, b) => {
+            return compareRows(a, b, column, currentSortDirection);
+        });
+        
+        console.log(`Sorted ${sortedResults.length} results by ${column} ${currentSortDirection}`); // Debug log
+        
+        // Re-render the table
+        renderTable(sortedResults);
+    }
+    
+    function compareRows(a, b, column, direction) {
+        let valueA = a[column];
+        let valueB = b[column];
+        
+        // Handle different data types
+        if (column === 'reported_date') {
+            valueA = parseDate(valueA);
+            valueB = parseDate(valueB);
+        } else if (column === 'order' || column === 'violation_id') {
+            valueA = parseInt(valueA) || 0;
+            valueB = parseInt(valueB) || 0;
+        } else if (column === 'apt') {
+            // Special handling for apartment sorting
+            valueA = normalizeApartment(valueA);
+            valueB = normalizeApartment(valueB);
+        } else {
+            // String comparison for class, story, etc.
+            valueA = String(valueA || '').toLowerCase();
+            valueB = String(valueB || '').toLowerCase();
+        }
+        
+        let result = 0;
+        if (valueA < valueB) result = -1;
+        else if (valueA > valueB) result = 1;
+        
+        return direction === 'desc' ? -result : result;
+    }
+    
+    function normalizeApartment(apt) {
+        // For apartment sorting: specific apartments first, then building-wide
+        const aptStr = String(apt || '').toLowerCase().trim();
+        if (aptStr === '' || aptStr === 'n/a' || aptStr === 'null' || aptStr === '0') {
+            return 'zzz_building'; // Sort building-wide to end
+        }
+        return aptStr;
+    }
+    
+    function parseDate(dateStr) {
+        if (!dateStr || dateStr === 'N/A' || dateStr === 'null' || dateStr === null) {
+            return new Date(0); // Very old date for null/invalid dates
+        }
+        
+        try {
+            let date;
+            const dateString = String(dateStr).trim();
+            
+            if (dateString.includes('T')) {
+                // ISO format: 2024-01-15T00:00:00
+                date = new Date(dateString);
+            } else if (dateString.includes('-')) {
+                // Date format: 2024-01-15 or YYYY-MM-DD
+                date = new Date(dateString);
+            } else if (dateString.includes('/')) {
+                // Date format: MM/DD/YYYY or DD/MM/YYYY
+                date = new Date(dateString);
+            } else {
+                // Try to parse as is
+                date = new Date(dateString);
+            }
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                console.warn('Invalid date parsed:', dateString);
+                return new Date(0); // Return very old date for invalid dates
+            }
+            
+            return date;
+        } catch (error) {
+            console.warn('Error parsing date:', dateStr, error);
+            return new Date(0); // Return very old date for error cases
+        }
+    }
+    
+    function updateSortIndicators(activeColumn, direction) {
+        // Reset all indicators
+        document.querySelectorAll('.sort-indicator').forEach(indicator => {
+            indicator.textContent = '↕️';
+            indicator.classList.remove('active');
+        });
+        
+        // Set active indicator
+        const activeIndicator = document.getElementById(`sort-${activeColumn}`);
+        if (activeIndicator) {
+            activeIndicator.textContent = direction === 'asc' ? '↑' : '↓';
+            activeIndicator.classList.add('active');
+        }
+    }
+    
+    function applyDefaultSort(results) {
+        console.log('Applying default sort to', results.length, 'results'); // Debug log
+        console.log('Using extracted apartment for prioritization:', extractedApartment); // Debug log
+        
+        // Apply the complex default sorting logic:
+        // 1. Violations for the specific apartment (from extracted address) at the very top
+        // 2. Building-wide violations below that
+        // 3. Other violations at the bottom
+        // 4. Most recent first within each group
+        
+        const sorted = results.sort((a, b) => {
+            const dateA = parseDate(a.reported_date);
+            const dateB = parseDate(b.reported_date);
+            
+            const aptA = String(a.apt || '').toUpperCase().trim();
+            const aptB = String(b.apt || '').toUpperCase().trim();
+            
+            // Determine violation categories
+            const isSpecificApartmentA = extractedApartment && aptA === extractedApartment;
+            const isSpecificApartmentB = extractedApartment && aptB === extractedApartment;
+            
+            const isBuildingWideA = aptA === '' || aptA === 'N/A' || aptA === 'NULL' || aptA === '0';
+            const isBuildingWideB = aptB === '' || aptB === 'N/A' || aptB === 'NULL' || aptB === '0';
+            
+            // Priority 1: Specific apartment violations (from extracted address) go to the very top
+            if (isSpecificApartmentA && !isSpecificApartmentB) {
+                console.log(`Prioritizing apartment ${aptA} (matches extracted apartment) over ${aptB}`);
+                return -1;
+            }
+            if (!isSpecificApartmentA && isSpecificApartmentB) {
+                console.log(`Prioritizing apartment ${aptB} (matches extracted apartment) over ${aptA}`);
+                return 1;
+            }
+            
+            // Priority 2: Building-wide violations come next (but below specific apartment)
+            if (!isSpecificApartmentA && !isSpecificApartmentB) {
+                if (isBuildingWideA && !isBuildingWideB) {
+                    console.log(`Prioritizing building-wide (${aptA}) over other apartment (${aptB})`);
+                    return -1;
+                }
+                if (!isBuildingWideA && isBuildingWideB) {
+                    console.log(`Prioritizing building-wide (${aptB}) over other apartment (${aptA})`);
+                    return 1;
+                }
+            }
+            
+            // Priority 3: Within the same category, sort by date (most recent first)
+            // dateB - dateA means newer dates (larger timestamps) come first
+            const dateCompare = dateB.getTime() - dateA.getTime();
+            
+            // Debug logging for date comparison
+            if (Math.abs(dateCompare) > 0) {
+                console.log(`Date comparison: ${a.reported_date} (${dateA.toISOString()}) vs ${b.reported_date} (${dateB.toISOString()}) = ${dateCompare}`);
+            }
+            
+            return dateCompare;
+        });
+        
+        console.log('Default sort completed. First few results:', sorted.slice(0, 5).map(r => ({
+            violation_id: r.violation_id,
+            apt: r.apt,
+            reported_date: r.reported_date,
+            isTargetApt: extractedApartment && String(r.apt || '').toUpperCase().trim() === extractedApartment,
+            isBuildingWide: ['', 'N/A', 'NULL', '0'].includes(String(r.apt || '').toUpperCase().trim())
+        })));
+        
+        return sorted;
+    }
+    
+    function renderTable(results) {
+        const tbody = document.getElementById('results-tbody');
+        tbody.innerHTML = '';
+        
+        results.forEach((result, index) => {
+            const row = document.createElement('tr');
+            row.setAttribute('data-index', index);
+            row.onclick = () => toggleRowExpansion(index, results);
+            
+            // Determine the violation type and apply appropriate CSS class
+            const apt = String(result.apt || '').toUpperCase().trim();
+            const isSpecificApartment = extractedApartment && apt === extractedApartment;
+            const isBuildingWide = apt === '' || apt === 'N/A' || apt === 'NULL' || apt === '0';
+            
+            let rowClass = 'violation-row-other'; // Default for other apartments
+            if (isSpecificApartment) {
+                rowClass = 'violation-row-target-apt';
+            } else if (isBuildingWide) {
+                rowClass = 'violation-row-building-wide';
+            }
+            
+            row.className = rowClass;
+            
+            // Add a data attribute to track violation type for debugging
+            row.setAttribute('data-violation-type', 
+                isSpecificApartment ? 'target-apartment' : 
+                isBuildingWide ? 'building-wide' : 'other-apartment'
+            );
+            
+            row.innerHTML = `
+                <td>
+                    <span class="fw-bold text-primary">${result.violation_id}</span>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-secondary">${result.class}</span>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-info">${result.order}</span>
+                </td>
+                <td class="text-center">${result.apt}</td>
+                <td class="text-center">${result.story}</td>
+                <td class="text-center">
+                    <small>${formatDate(result.reported_date)}</small>
+                </td>
+                <td>
+                    <div style="word-wrap: break-word; white-space: normal; line-height: 1.4;">
+                        ${result.violation_description}
+                    </div>
+                </td>
+            `;
+            
+            tbody.appendChild(row);
+        });
+        
+        // Log the highlighting applied for debugging
+        const targetAptCount = results.filter(r => extractedApartment && String(r.apt || '').toUpperCase().trim() === extractedApartment).length;
+        const buildingWideCount = results.filter(r => {
+            const apt = String(r.apt || '').toUpperCase().trim();
+            return apt === '' || apt === 'N/A' || apt === 'NULL' || apt === '0';
+        }).length;
+        const otherCount = results.length - targetAptCount - buildingWideCount;
+        
+        console.log(`Applied highlighting: ${targetAptCount} target apartment (green), ${buildingWideCount} building-wide (yellow), ${otherCount} other (gray)`);
+    }
+
+    function filterViolations(filterType) {
+        console.log('Filtering violations by type:', filterType); // Debug log
+        
+        // Update active filter button
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-filter="${filterType}"]`).classList.add('active');
+        
+        // Show/hide table rows based on filter
+        const allRows = document.querySelectorAll('#results-tbody tr:not(.expanded-row)');
+        let visibleCount = 0;
+        
+        allRows.forEach(row => {
+            const violationType = row.getAttribute('data-violation-type');
+            
+            if (filterType === 'all' || violationType === filterType) {
+                row.style.display = '';
+                row.classList.remove('violation-row-hidden');
+                visibleCount++;
+                
+                // Also show any expanded detail row that follows this row
+                const nextRow = row.nextElementSibling;
+                if (nextRow && nextRow.classList.contains('expanded-row')) {
+                    nextRow.style.display = '';
+                }
+            } else {
+                row.style.display = 'none';
+                row.classList.add('violation-row-hidden');
+                
+                // Also hide any expanded detail row that follows this row
+                const nextRow = row.nextElementSibling;
+                if (nextRow && nextRow.classList.contains('expanded-row')) {
+                    nextRow.style.display = 'none';
+                }
+            }
+        });
+        
+        console.log(`Filter applied: showing ${visibleCount} out of ${allRows.length} violations`);
+        
+        // Update the results count or show a message if no results
+        updateFilterMessage(filterType, visibleCount, allRows.length);
+    }
+    
+    function updateFilterMessage(filterType, visibleCount, totalCount) {
+        // Remove any existing filter message
+        const existingMessage = document.getElementById('filter-message');
+        if (existingMessage) {
+            existingMessage.remove();
+        }
+        
+        // Add a message showing current filter status
+        if (filterType !== 'all' || visibleCount !== totalCount) {
+            const filterMessage = document.createElement('div');
+            filterMessage.id = 'filter-message';
+            filterMessage.className = 'alert alert-info py-2 mb-2';
+            
+            let filterName = '';
+            switch(filterType) {
+                case 'target-apartment':
+                    filterName = 'your apartment';
+                    break;
+                case 'building-wide':
+                    filterName = 'building-wide';
+                    break;
+                case 'other-apartment':
+                    filterName = 'other apartments';
+                    break;
+                case 'all':
+                    filterName = 'all types';
+                    break;
+            }
+            
+            filterMessage.innerHTML = `
+                <div class="d-flex align-items-center justify-content-between">
+                    <span>
+                        <i class="bi bi-filter me-1"></i>
+                        Showing ${visibleCount} of ${totalCount} violations (${filterName})
+                    </span>
+                    ${filterType !== 'all' ? '<button class="btn btn-sm btn-outline-secondary" onclick="filterViolations(\'all\')">Clear Filter</button>' : ''}
+                </div>
+            `;
+            
+            // Insert the message before the table
+            const resultsTable = document.querySelector('.results-table');
+            resultsTable.parentNode.insertBefore(filterMessage, resultsTable);
+        }
+    }
+
+    // Initialize tooltips
+    document.addEventListener('DOMContentLoaded', function() {
+        // Any initialization code can go here
+    });
+    </script>
+</body>
+</html> 
