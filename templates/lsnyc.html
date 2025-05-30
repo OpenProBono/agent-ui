@@ -718,7 +718,13 @@
         expandedRow.innerHTML = `
             <td colspan="7">
                 <div class="expanded-content">
-                    <h6><i class="bi bi-info-circle me-1"></i> Detailed Violation Information</h6>
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <h6><i class="bi bi-info-circle me-1"></i> Detailed Violation Information</h6>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="copyFullDataToClipboard(${index}, '${currentResults ? 'sorted' : 'original'}')">
+                            <i class="bi bi-clipboard me-1"></i>
+                            Copy Full Data
+                        </button>
+                    </div>
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-2">
@@ -1129,6 +1135,109 @@
         } else {
             console.warn('No violations available to extract building ID');
         }
+    }
+
+    function copyFullDataToClipboard(index, dataSource) {
+        try {
+            // Get the appropriate data source
+            let resultsToUse;
+            if (dataSource === 'sorted') {
+                // Get currently displayed/filtered results
+                const visibleRows = Array.from(document.querySelectorAll('#results-tbody tr:not(.expanded-row):not(.violation-row-hidden)'));
+                resultsToUse = visibleRows.map(row => {
+                    const rowIndex = parseInt(row.getAttribute('data-index'));
+                    return analysisResults[rowIndex];
+                });
+            } else {
+                resultsToUse = analysisResults;
+            }
+            
+            const violation = resultsToUse[index];
+            if (!violation || !violation.full_data) {
+                console.error('No full_data available for violation at index:', index);
+                showCopyFeedback(false, 'No full data available');
+                return;
+            }
+            
+            // Format the full data as JSON with nice indentation
+            const fullDataJson = JSON.stringify(violation.full_data, null, 2);
+            
+            // Use the modern Clipboard API if available
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(fullDataJson).then(() => {
+                    console.log('Full violation data copied to clipboard');
+                    showCopyFeedback(true);
+                }).catch(err => {
+                    console.error('Failed to copy to clipboard:', err);
+                    fallbackCopyToClipboard(fullDataJson);
+                });
+            } else {
+                // Fallback for older browsers
+                fallbackCopyToClipboard(fullDataJson);
+            }
+        } catch (error) {
+            console.error('Error copying full data:', error);
+            showCopyFeedback(false, 'Copy failed');
+        }
+    }
+    
+    function fallbackCopyToClipboard(text) {
+        try {
+            // Create a temporary textarea element
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            textArea.style.top = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            // Try to copy using execCommand
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (successful) {
+                console.log('Full violation data copied to clipboard (fallback method)');
+                showCopyFeedback(true);
+            } else {
+                showCopyFeedback(false, 'Copy not supported');
+            }
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            showCopyFeedback(false, 'Copy failed');
+        }
+    }
+    
+    function showCopyFeedback(success, customMessage = null) {
+        // Find the button that was clicked by looking for the one in an expanded row
+        const expandedRow = document.querySelector('.expanded-row');
+        if (!expandedRow) return;
+        
+        const button = expandedRow.querySelector('button[onclick*="copyFullDataToClipboard"]');
+        if (!button) return;
+        
+        // Store original button content
+        const originalContent = button.innerHTML;
+        
+        // Update button with feedback
+        if (success) {
+            button.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+            button.classList.remove('btn-outline-secondary');
+            button.classList.add('btn-success');
+        } else {
+            const message = customMessage || 'Copy Failed';
+            button.innerHTML = `<i class="bi bi-x me-1"></i>${message}`;
+            button.classList.remove('btn-outline-secondary');
+            button.classList.add('btn-danger');
+        }
+        
+        // Reset button after 2 seconds
+        setTimeout(() => {
+            button.innerHTML = originalContent;
+            button.classList.remove('btn-success', 'btn-danger');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
     }
 
     // Initialize tooltips

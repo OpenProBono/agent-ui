@@ -31,6 +31,40 @@ from app_helper import (
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
+# Cache for housing violations with TTL
+violations_cache = {}
+CACHE_TTL = 3600  # 1 hour in seconds
+
+def get_cached_violations(bbl):
+    """Get cached violations for a BBL if not expired."""
+    if bbl in violations_cache:
+        cached_data, timestamp = violations_cache[bbl]
+        if time.time() - timestamp < CACHE_TTL:
+            logger.info(f"Using cached violations for BBL: {bbl}")
+            return cached_data
+        else:
+            # Remove expired entry
+            del violations_cache[bbl]
+            logger.info(f"Cache expired for BBL: {bbl}")
+    return None
+
+def cache_violations(bbl, violations_data):
+    """Cache violations data for a BBL with current timestamp."""
+    violations_cache[bbl] = (violations_data, time.time())
+    logger.info(f"Cached violations for BBL: {bbl}")
+
+def clear_expired_cache():
+    """Clear expired cache entries."""
+    current_time = time.time()
+    expired_keys = [
+        bbl for bbl, (_, timestamp) in violations_cache.items()
+        if current_time - timestamp >= CACHE_TTL
+    ]
+    for bbl in expired_keys:
+        del violations_cache[bbl]
+    if expired_keys:
+        logger.info(f"Cleared {len(expired_keys)} expired cache entries")
+
 # Custom template filters
 @app.template_filter('datetime')
 def format_datetime(value):
@@ -2173,60 +2207,73 @@ def lsnyc():
                         # Step 2: Get housing violations using the extracted BBL
                         logger.info(f"Step 2: Getting housing violations for BBL: {bbl}")
                         
-                        # Call the housing_violations endpoint
-                        # FastAPI Body() with simple type expects raw string, not JSON object
-                        bbl_string = str(bbl)
+                        # Clear expired cache entries periodically
+                        clear_expired_cache()
                         
-                        logger.info(f"Sending housing violations request with BBL: {bbl_string}")
+                        # Check cache first
+                        cached_violations = get_cached_violations(bbl)
+                        if cached_violations is not None:
+                            violations = cached_violations
+                            logger.info(f"Using cached violations for BBL: {bbl}")
+                        else:
+                            # Call the housing_violations endpoint
+                            # FastAPI Body() with simple type expects raw string, not JSON object
+                            bbl_string = str(bbl)
+                            
+                            logger.info(f"Sending housing violations request with BBL: {bbl_string}")
+                            
+                            with api_request("housing_violations", method="POST", data=bbl_string, id_token=id_token) as housing_r:
+                                logger.info(f"Housing violations response status: {housing_r.status_code}")
+                                if housing_r.status_code == 422:
+                                    logger.error(f"422 Error details: {housing_r.text}")
+                                housing_r.raise_for_status()
+                                housing_response = housing_r.json()
+                                
+                                logger.info(f"Housing violations response: {housing_response}")
+                                
+                                if housing_response.get("message") == "Success":
+                                    violations = housing_response.get("violations", [])
+                                    # Cache the violations data
+                                    cache_violations(bbl, violations)
+                                else:
+                                    return jsonify({"error": f"Failed to get housing violations: {housing_response.get('message', 'Unknown error')}"}), 500
                         
-                        with api_request("housing_violations", method="POST", data=bbl_string, id_token=id_token) as housing_r:
-                            logger.info(f"Housing violations response status: {housing_r.status_code}")
-                            if housing_r.status_code == 422:
-                                logger.error(f"422 Error details: {housing_r.text}")
-                            housing_r.raise_for_status()
-                            housing_response = housing_r.json()
-                            
-                            logger.info(f"Housing violations response: {housing_response}")
-                            
-                            if housing_response.get("message") == "Success":
-                                violations = housing_response.get("violations", [])
-                                
-                                if not violations:
-                                    return jsonify({"error": f"No housing violations found for BBL: {bbl} at address: {address}"}), 404
-                                
-                                # Step 3: Map the NYC Open Data fields to the expected frontend structure
-                                results = []
-                                for violation in violations:
-                                    # Map NYC Open Data fields to our expected structure
-                                    result = {
-                                        "violation_id": str(violation.get("violationid", violation.get("id", "N/A"))),
-                                        "class": violation.get("class", "N/A"),
-                                        "order": str(violation.get("ordernumber", "N/A")),
-                                        "apt": violation.get("apartment", "N/A"),
-                                        "story": violation.get("story", "N/A"),
-                                        "reported_date": violation.get("inspectiondate", "N/A"),
-                                        "violation_description": violation.get("novdescription", "N/A"),
-                                        "nov_issued_date": violation.get("novissueddate", "N/A"),
-                                        "nov_id": str(violation.get("novid", "N/A")),
-                                        "nov_type": violation.get("novtype", "N/A"),
-                                        "correction_by_date": violation.get("originalcorrectbydate", "N/A"),
-                                        "certification_by_date": violation.get("originalcertifybydate", "N/A"),
-                                        "actual_cert_date": violation.get("certifieddate", "N/A"),
-                                        "violation_status": violation.get("currentstatus", "N/A"),
-                                        "violation_status_date": violation.get("currentstatusdate", "N/A"),
-                                        "building_id": violation.get("buildingid", violation.get("building_id", violation.get("bin", "N/A")))
-                                    }
-                                    results.append(result)
-                                
-                                return jsonify({
-                                    "success": True, 
-                                    "results": results, 
-                                    "bbl": bbl,
-                                    "address": address,
-                                    "count": len(results)
-                                })
-                            else:
-                                return jsonify({"error": f"Failed to get housing violations: {housing_response.get('message', 'Unknown error')}"}), 500
+                        # Process violations (whether from cache or API)
+                        if not violations:
+                            return jsonify({"error": f"No housing violations found for BBL: {bbl} at address: {address}"}), 404
+                        
+                        # Step 3: Map the NYC Open Data fields to the expected frontend structure
+                        results = []
+                        for violation in violations:
+                            # Map NYC Open Data fields to our expected structure
+                            result = {
+                                "violation_id": str(violation.get("violationid", violation.get("id", "N/A"))),
+                                "class": violation.get("class", "N/A"),
+                                "order": str(violation.get("ordernumber", "N/A")),
+                                "apt": violation.get("apartment", "N/A"),
+                                "story": violation.get("story", "N/A"),
+                                "reported_date": violation.get("inspectiondate", "N/A"),
+                                "violation_description": violation.get("novdescription", "N/A"),
+                                "nov_issued_date": violation.get("novissueddate", "N/A"),
+                                "nov_id": str(int(float(violation.get("novid", 0)))) if violation.get("novid") not in [None, "", "N/A", "null"] else "N/A",
+                                "nov_type": violation.get("novtype", "N/A"),
+                                "correction_by_date": violation.get("originalcorrectbydate", "N/A"),
+                                "certification_by_date": violation.get("originalcertifybydate", "N/A"),
+                                "actual_cert_date": violation.get("certifieddate", "N/A"),
+                                "violation_status": violation.get("currentstatus", "N/A"),
+                                "violation_status_date": violation.get("currentstatusdate", "N/A"),
+                                "building_id": violation.get("buildingid", violation.get("building_id", violation.get("bin", "N/A"))),
+                                "full_data": violation,
+                            }
+                            results.append(result)
+                        
+                        return jsonify({
+                            "success": True, 
+                            "results": results, 
+                            "bbl": bbl,
+                            "address": address,
+                            "count": len(results)
+                        })
                     else:
                         return jsonify({"error": f"BBL extraction failed: {chat_response.get('error', 'Unknown error')}"}), 500
             
