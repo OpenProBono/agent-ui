@@ -5,6 +5,10 @@
        href="#" role="button" id="dropdownProfile" data-bs-toggle="dropdown" aria-expanded="false" 
        style="width: 40px; height: 40px; font-size: 18px; background-color: #5c28df">
         {% if user and user.email %}{{ user.email[0].upper() }}{% else %}<i class="bi bi-person"></i>{% endif %}
+        <!-- Session status indicator -->
+        <span id="session-status-indicator" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success" style="font-size: 8px; display: none;">
+            <span class="visually-hidden">Session status</span>
+        </span>
     </a>
 
     <!-- Dropdown Menu -->
@@ -14,6 +18,12 @@
             <a class="dropdown-item d-flex align-items-center" href="#">
                 <i class="bi bi-person-circle me-2"></i> {{ user.email }}
             </a>
+        </li>
+        <li>
+            <div class="dropdown-item-text d-flex align-items-center">
+                <i class="bi bi-clock me-2"></i> 
+                <small id="session-status-text" class="text-muted">Session active</small>
+            </div>
         </li>
         <li><hr class="dropdown-divider"></li>
         {% endif %}

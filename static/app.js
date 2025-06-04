@@ -115,7 +115,7 @@ async function sendFeedback(type) {
         formData.append('data', JSON.stringify(feedbackData));
         formData.append('index', feedbackIndex);
         formData.append('sessionId', currentSessionId);
-        const response = await fetch('/feedback', {
+        const response = await authenticatedFetch('/feedback', {
             method: 'POST',
             body: formData
         });
@@ -478,7 +478,7 @@ function isWholeWordSubstring(lcs, str1, str2) {
     const validEnd1 = (endPos1 === str1.length || !/[a-zA-Z0-9]/.test(str1.charAt(endPos1)));
     const validEnd2 = (endPos2 === str2.length || !/[a-zA-Z0-9]/.test(str2.charAt(endPos2)));
 
-    // If all boundary checks pass, it's a whole word; otherwise, it’s not.
+    // If all boundary checks pass, it's a whole word; otherwise, it's not.
     return validStart1 && validEnd1 && validStart2 && validEnd2;
 }
 
@@ -550,7 +550,7 @@ async function sendMessage() {
                 handleStreamEvent({"type": "file", "id": file.name})
             });
 
-            const response = await fetch('/chat', {
+            const response = await authenticatedFetch('/chat', {
                 method: 'POST',
                 body: formData
             });
@@ -1038,7 +1038,7 @@ function updateSources(newSources) {
 
 async function getNewSession(botId) {
     try {
-        const response = await fetch(`/agent/${botId}/new_session`);
+        const response = await authenticatedFetch(`/agent/${botId}/new_session`);
         if (response.ok) {
             const data = await response.json();
             currentSessionId = data.session_id;
@@ -1109,7 +1109,7 @@ async function switchSession(sessionId) {
 
     // Get bot info
     try {
-        const response = await fetch(`/agent/${currentBotId}/info`);
+        const response = await authenticatedFetch(`/agent/${currentBotId}/info`);
         if (response.ok) {
             const result = await response.json();
             const name = document.getElementById('name');
@@ -1136,7 +1136,7 @@ async function switchSession(sessionId) {
 
     // Get messages
     try {
-        const response = await fetch(`/get_session_messages/${sessionId}`);
+        const response = await authenticatedFetch(`/get_session_messages/${sessionId}`);
         if (response.ok) {
             const messages = await response.json();
             for (const msg of messages.history) {
@@ -1179,7 +1179,7 @@ function clearSession() {
 }
 
 async function getCurrentSessionTitle() {
-    const response = await fetch(`/sessions?ids[]=${currentSessionId}`);
+    const response = await authenticatedFetch(`/sessions?ids[]=${currentSessionId}`);
     if (!response.ok) throw new Error('Failed to get sessions from server');
     let fetchedSessions = await response.json();
     let savedSessions = loadSavedSessions();
@@ -1339,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById("sendButton").setAttribute("disabled", "");
     const statusMsg = document.getElementById("statusMsg");
     try {
-        const response = await fetch('/status');
+        const response = await authenticatedFetch('/status');
         if (response.ok) {
             const result = await response.json();
             if (result.status != "ok") {
@@ -1365,3 +1365,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         await switchSession(sessionId);
     }
 });
+
+// Enhanced fetch function that handles authentication errors
+// This uses the global authentication functions from base.html
+async function authenticatedFetch(url, options = {}) {
+    return await fetch(url, options); // Global fetch override handles authentication
+}

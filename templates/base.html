@@ -42,8 +42,201 @@
         {% block content %}{% endblock %}
     </div>
 
+    <!-- Toast container for session warnings -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="session-warning-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                <strong class="me-auto">Session Warning</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body">
+                Your session will expire soon. Please save your work and refresh the page to continue.
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    
+    <!-- Global Authentication Handler -->
+    <script>
+        // Global authentication error handling
+        function isAuthenticationError(response) {
+            return response.status === 401 || response.status === 403 || 
+                   (response.status === 302 && response.url && response.url.includes('/signup'));
+        }
+
+        function handleAuthenticationError() {
+            console.log('Authentication error detected. Redirecting to login...');
+            // Clear any local storage data that might be stale
+            localStorage.removeItem('sessions');
+            // Show a brief message before redirect
+            const body = document.body;
+            const overlay = document.createElement('div');
+            overlay.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.8); color: white; display: flex; 
+                align-items: center; justify-content: center; z-index: 10000;
+                font-size: 18px; font-family: Arial, sans-serif;
+            `;
+            overlay.innerHTML = '<div>Session expired. Redirecting to login...</div>';
+            body.appendChild(overlay);
+            
+            // Redirect after a brief delay
+            setTimeout(() => {
+                window.location.href = '/signup';
+            }, 1500);
+        }
+
+        // Enhanced fetch function that handles authentication errors globally
+        const originalFetch = window.fetch;
+        let sessionFailureCount = 0;
+        let warningShown = false;
+        
+        window.fetch = async function(...args) {
+            try {
+                const response = await originalFetch.apply(this, args);
+                
+                // Check for authentication errors
+                if (isAuthenticationError(response)) {
+                    handleAuthenticationError();
+                    throw new Error('Authentication required');
+                }
+                
+                // Reset failure count on successful request
+                sessionFailureCount = 0;
+                
+                return response;
+            } catch (error) {
+                // If it's our authentication error, don't show additional errors
+                if (error.message === 'Authentication required') {
+                    throw error;
+                }
+                // For other errors, re-throw
+                throw error;
+            }
+        };
+
+        // Show session warning toast
+        function showSessionWarning() {
+            if (warningShown) return; // Don't show multiple warnings
+            
+            const toastElement = document.getElementById('session-warning-toast');
+            if (toastElement) {
+                const toast = new bootstrap.Toast(toastElement, {
+                    autohide: false // Keep it visible until user dismisses
+                });
+                toast.show();
+                warningShown = true;
+            }
+        }
+
+        // Session validation function
+        async function validateSession() {
+            try {
+                const response = await originalFetch('/status', {
+                    method: 'GET',
+                    credentials: 'same-origin'
+                });
+                
+                if (isAuthenticationError(response)) {
+                    console.log('Session validation failed - authentication required');
+                    updateSessionStatus('expired');
+                    handleAuthenticationError();
+                    return false;
+                }
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    const isValid = result.status === "ok";
+                    
+                    if (isValid) {
+                        sessionFailureCount = 0;
+                        warningShown = false;
+                        updateSessionStatus('active');
+                    } else {
+                        sessionFailureCount++;
+                        if (sessionFailureCount >= 2) {
+                            updateSessionStatus('warning');
+                            showSessionWarning();
+                        } else {
+                            updateSessionStatus('error');
+                        }
+                    }
+                    
+                    return isValid;
+                }
+                
+                sessionFailureCount++;
+                updateSessionStatus('error');
+                return false;
+            } catch (error) {
+                console.error('Session validation error:', error);
+                sessionFailureCount++;
+                updateSessionStatus('error');
+                return false;
+            }
+        }
+
+        // Update session status indicator
+        function updateSessionStatus(status) {
+            const indicator = document.getElementById('session-status-indicator');
+            const statusText = document.getElementById('session-status-text');
+            
+            if (!indicator || !statusText) return;
+            
+            switch (status) {
+                case 'active':
+                    indicator.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-success';
+                    indicator.style.display = 'none'; // Hide when active
+                    statusText.textContent = 'Session active';
+                    statusText.className = 'text-muted';
+                    break;
+                case 'warning':
+                    indicator.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning';
+                    indicator.style.display = 'block';
+                    statusText.textContent = 'Session expiring soon';
+                    statusText.className = 'text-warning';
+                    break;
+                case 'expired':
+                    indicator.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger';
+                    indicator.style.display = 'block';
+                    statusText.textContent = 'Session expired';
+                    statusText.className = 'text-danger';
+                    break;
+                case 'error':
+                    indicator.className = 'position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary';
+                    indicator.style.display = 'block';
+                    statusText.textContent = 'Connection error';
+                    statusText.className = 'text-secondary';
+                    break;
+            }
+        }
+
+        // Periodic session validation
+        function startSessionValidation() {
+            // Initial validation
+            validateSession();
+            
+            // Check session validity every 2 minutes for more responsive feedback
+            setInterval(async () => {
+                const isValid = await validateSession();
+                if (!isValid) {
+                    console.log('Session validation failed during periodic check');
+                    handleAuthenticationError();
+                }
+            }, 2 * 60 * 1000); // 2 minutes
+        }
+
+        // Initialize session validation when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only start session validation if we're not on the signup page
+            if (!window.location.pathname.includes('/signup')) {
+                startSessionValidation();
+            }
+        });
+    </script>
     
     {% block scripts %}{% endblock %}
 </body>

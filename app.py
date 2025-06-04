@@ -2,6 +2,7 @@ import datetime
 import os
 import time
 import json
+import re
 from json import dumps, loads
 from typing import List
 
@@ -34,6 +35,49 @@ app.secret_key = os.environ["FLASK_SECRET_KEY"]
 # Cache for housing violations with TTL
 violations_cache = {}
 CACHE_TTL = 3600  # 1 hour in seconds
+
+def check_authentication():
+    """
+    Check if the user is authenticated and has a valid token.
+    Returns True if authenticated, False otherwise.
+    Automatically clears session if token is invalid.
+    """
+    id_token = session.get("id_token")
+    if not id_token:
+        return False
+    
+    try:
+        # Make a quick API call to validate the token
+        with api_request("", method="GET", id_token=id_token, timeout=3) as r:
+            if r.status_code in [401, 403]:
+                logger.warning("Token validation failed - clearing session")
+                session.clear()
+                return False
+            # Don't raise for other errors, just check auth
+            return r.status_code < 500  # Any success or client error (but not server error)
+    except requests.exceptions.Timeout:
+        # Timeout doesn't necessarily mean auth failure
+        return True
+    except requests.exceptions.RequestException as e:
+        if hasattr(e, 'response') and e.response is not None:
+            if e.response.status_code in [401, 403]:
+                logger.warning("Authentication failed during token validation - clearing session")
+                session.clear()
+                return False
+        # For other request exceptions, assume auth is still valid
+        return True
+    except Exception:
+        # For other exceptions, assume auth is still valid
+        return True
+
+def handle_auth_error(request_wants_json=False):
+    """
+    Handle authentication errors by either redirecting to signup or returning JSON error.
+    """
+    if request_wants_json or request.is_json or 'application/json' in request.headers.get('Accept', ''):
+        return jsonify({"error": "Authentication required", "redirect": "/signup"}), 401
+    else:
+        return redirect("/signup")
 
 def get_cached_violations(bbl):
     """Get cached violations for a BBL if not expired."""
@@ -82,6 +126,10 @@ def format_datetime(value):
 @app.route("/")
 @app.route("/dashboard")
 def index():
+    # Check authentication with improved handling
+    if not check_authentication():
+        return handle_auth_error()
+    
     # Example data
     agents = [
         {"id": 1, "name": "default_bot"},
@@ -94,13 +142,10 @@ def index():
         "searches_completed": 45,
         "file_storage_used": "2 GB",
     }
-    id_token = session.get("id_token")
     user = {
         "email": session.get("email"),
         "firebase_uid": session.get("firebase_uid")
     }
-    if(not id_token):
-        return redirect("/signup")
     return render_template("index.html", agents=agents, metrics=metrics, user=user)
 
 
@@ -130,6 +175,10 @@ def logout():
 def agents():
     logger.info("Agents endpoint called.")
 
+    # Check authentication with improved handling
+    if not check_authentication():
+        return handle_auth_error()
+    
     # Get the user's ID token from the session
     id_token = session.get("id_token")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
@@ -273,10 +322,13 @@ def users():
 @app.route("/chat", methods=["GET", "POST"])
 def chat():
     logger.info("Chat endpoint called.")
+    
+    # Check authentication with improved handling
+    if not check_authentication():
+        return handle_auth_error(request_wants_json=True)
+    
     id_token = session.get("id_token")
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
-    if not id_token:
-        return redirect("/signup")
 
     if request.method == "POST":
         # Get the message and files from the request
@@ -468,16 +520,34 @@ def get_status():
     logger.info("Status endpoint called.")
     id_token = session.get("id_token")
     if not id_token:
-        return redirect("/signup")
+        logger.warning("Status endpoint: No id_token in session")
+        return jsonify({"status": "authentication_required"}), 401
+    
     try:
+        # Make a simple API call to validate the token
         with api_request("", method="GET", id_token=id_token, timeout=5) as r:
+            if r.status_code == 401 or r.status_code == 403:
+                logger.warning("Status endpoint: Token validation failed with status %s", r.status_code)
+                # Clear the expired session
+                session.clear()
+                return jsonify({"status": "authentication_required"}), 401
             r.raise_for_status()
     except requests.exceptions.Timeout:
         logger.exception("Status endpoint timed out.")
-        return {"status": "timeout"}
+        return jsonify({"status": "timeout"}), 200
+    except requests.exceptions.RequestException as e:
+        if hasattr(e, 'response') and e.response is not None:
+            if e.response.status_code in [401, 403]:
+                logger.warning("Status endpoint: Authentication failed during API request")
+                # Clear the expired session
+                session.clear()
+                return jsonify({"status": "authentication_required"}), 401
+        logger.exception("Status endpoint got an unexpected response")
+        return jsonify({"status": "not ok"}), 400
     except Exception:
         logger.exception("Status endpoint got an unexpected response")
         return jsonify({"status": "not ok"}), 400
+    
     logger.info("Status endpoint got OK response.")
     return jsonify({"status": "ok"})
 
@@ -2075,7 +2145,10 @@ def lsnyc():
     """LSNYC page for document analysis and text input processing."""
     logger.info("LSNYC endpoint called.")
     
-    # This page is accessible to everyone, no authentication required
+    # Check authentication - redirect to signup if not logged in
+    if not check_authentication():
+        return handle_auth_error()
+    
     user = {"firebase_uid": session.get("firebase_uid"), "email": session.get("email")}
     id_token = session.get("id_token")
     
@@ -2168,7 +2241,6 @@ def lsnyc():
                         
                         # Parse the JSON response from the bot
                         try:
-                            import json
                             # Try to parse the bot's response as JSON
                             if bot_output.strip().startswith('{'):
                                 response_data = json.loads(bot_output)
@@ -2179,7 +2251,6 @@ def lsnyc():
                                     return jsonify({"error": "No BBL found in the bot response. Please ensure the document contains a valid BBL number."}), 400
                                     
                                 # Validate BBL format (should be 10 digits)
-                                import re
                                 if not re.match(r'^\d{10}$', bbl):
                                     return jsonify({"error": f"Invalid BBL format: {bbl}. BBL should be a 10-digit number."}), 400
                                 
@@ -2195,7 +2266,6 @@ def lsnyc():
                                     return jsonify({"error": f"Could not extract BBL from bot response: {bot_output}"}), 400
                         except json.JSONDecodeError:
                             # Fallback: try to extract BBL from plain text response
-                            import re
                             bbl_match = re.search(r'\b(\d{10})\b', bot_output)
                             if bbl_match:
                                 bbl = bbl_match.group(1)
